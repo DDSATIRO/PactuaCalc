@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest / Coverage
+.pytest_cache/
+pytest-cache-files-*/
+
+# Test outputs (opcionais, comente se quiser commitar de fato os dados de teste)
+*.pdf
+*.csv
+*.docx

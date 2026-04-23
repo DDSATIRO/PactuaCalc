@@ -1,0 +1,10 @@
+[project]
+name = "geracordo"
+version = "0.1.0"
+description = "Aplicacao inicial para leitura de relatorios PROJEF Web e estruturacao de propostas de acordo."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
