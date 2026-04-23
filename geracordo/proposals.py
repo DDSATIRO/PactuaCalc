@@ -271,7 +271,7 @@ def _render_header(layout: ProposalPdfLayout, case_data: CaseData, consolidated:
             ("CPF/CNPJ", case_data.cpf_cnpj),
             ("Competencia", case_data.competencia_atualizacao or "-"),
             ("Atualizado em", case_data.data_atualizacao or "-"),
-            ("Data limite", case_data.data_limite_resposta or "-"),
+            ("Data Limite para Resposta", case_data.data_limite_resposta or "-", (0.76, 0.08, 0.08)),
             ("Data da Entrada/Primeira Parcela", case_data.data_primeira_parcela or "-", (0.76, 0.08, 0.08)),
             ("Multa", format_percent_br(case_data.multa_percentual)),
         ]
@@ -328,7 +328,9 @@ def _render_deadline_callout(layout: ProposalPdfLayout, case_data: CaseData) -> 
     data_limite = case_data.data_limite_resposta or "-"
     layout.callout(
         title="OPTE POR UMA DAS OPCOES DE PARCELAMENTO OFERTADAS ABAIXO.",
-        body=f"RESPONDER OBRIGATORIAMENTE ATE {data_limite}.",
+        body="",
+        bottom_prefix="RESPONDER OBRIGATORIAMENTE ATE ",
+        bottom_accent=f"{data_limite}.",
     )
 
 
