@@ -353,7 +353,7 @@ def atualizar_relatorio_tcu(case_data: CaseData) -> Path:
     devedor_clean = (case_data.devedor or "SDEV")[:30].strip()
     timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
     
-    filename = f"Demonstrativo-TCU-{processo_clean}-{devedor_clean}-{timestamp}.pdf"
+    filename = f"CALCULO-TCU-{processo_clean}-{devedor_clean}-{timestamp}.pdf"
     target = download_dir / filename
     
     payload = montar_payload_tcu(case_data.lancamentos_tcu)
