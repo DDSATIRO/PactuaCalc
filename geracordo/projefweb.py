@@ -37,6 +37,29 @@ def data_base_para_atualizacao(case_data: CaseData) -> str:
     return competencia
 
 
+def decrementar_mes_competencia(competencia: str) -> str:
+    try:
+        month_str, year_str = competencia.split("/")
+        competencia_date = date(int(year_str), int(month_str), 1)
+        if competencia_date.month == 1:
+            nova_data = date(competencia_date.year - 1, 12, 1)
+        else:
+            nova_data = date(competencia_date.year, competencia_date.month - 1, 1)
+        return f"{nova_data.month:02d}/{nova_data.year}"
+    except Exception:
+        return competencia
+
+
+def _registrar_screenshot_erro(page, nome_base: str, download_dir: Path) -> None:
+    try:
+        import time
+        timestamp = int(time.time())
+        target = download_dir / f"{nome_base}_{timestamp}.png"
+        page.screenshot(path=target)
+    except Exception:
+        pass
+
+
 def pasta_preferencial_relatorios() -> Path:
     home = Path.home()
     one_drive = Path(os.environ.get("OneDrive", "")).expanduser() if os.environ.get("OneDrive") else None
@@ -459,105 +482,124 @@ def atualizar_relatorio_projef(case_data: CaseData) -> Path:
     target_data_base = data_base_para_atualizacao(case_data)
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=False)
+        browser = playwright.chromium.launch(headless=True)
         context = browser.new_context(accept_downloads=True)
         page = context.new_page()
-        page.goto(projef_url, wait_until="domcontentloaded")
 
-        _click_first_visible(page, ["Abrir"])
-        _wait_for_dialog_with_text(page, "Identificador")
-
-        identificador_selectors = [
-            "xpath=//*[contains(@class, 'x-window') or contains(@class, 'x-panel') or contains(@class, 'x-layer')][.//*[contains(normalize-space(.), 'Identificador')]]//input[not(@type='hidden')][1]",
-            "xpath=//*[contains(normalize-space(.), 'Identificador (8 letras e algarismos)')]/following::input[1]",
-            "input[name*=identificador i]",
-            "input[id*=identificador i]",
-            "input[placeholder*=identificador i]",
-            "input[type=text]",
-        ]
-        _fill_first_visible(page, identificador_selectors, case_data.identificador_projef)
-        _click_first_locator(
-            page,
-            [
-                "xpath=//*[contains(@class, 'x-window') or contains(@class, 'x-panel') or contains(@class, 'x-layer')][.//*[contains(normalize-space(.), 'Identificador')]]//input[@value='OK']",
-                "xpath=//*[contains(@class, 'x-window') or contains(@class, 'x-panel') or contains(@class, 'x-layer')][.//*[contains(normalize-space(.), 'Identificador')]]//*[self::button or self::span or self::div][normalize-space()='OK']",
-            ],
-        )
-
-        sleep(1.5)
-
-        _click_tab_and_confirm(page, "Correcao Monetaria", "Atualizar para")
-
-        try:
-            _overwrite_masked_input_next_to_text(page, "Atualizar para", target_data_base)
-        except ProjefWebAutomationError:
-            _fill_input_next_to_text(page, "Atualizar para", target_data_base)
-
-        data_base_selectors = [
-            "xpath=//*[contains(normalize-space(), 'Atualizar para')]/following::input[1]",
-            "xpath=//td[contains(normalize-space(), 'Atualizar para')]/following::input[1]",
-            "xpath=//label[contains(normalize-space(), 'Atualizar para')]/following::input[1]",
-            "xpath=//input[contains(@value, '/20') and not(@type='hidden')]",
-            "xpath=(//input[@type='text' and not(@readonly) and not(@disabled)])[last()]",
-            "input[name*=atualizar i]",
-            "input[id*=atualizar i]",
-        ]
-
-        _wait_for_input_value(page, data_base_selectors, target_data_base, timeout=5000)
-        _commit_input_value(page, data_base_selectors)
-        page.wait_for_timeout(2000)
-
-        _click_tab_and_confirm(page, "Dados Finais", "Calcular")
-
-        suggested_name = f"projef_{case_data.identificador_projef}.pdf"
-        target = download_dir / suggested_name
-
-        try:
-            with page.expect_download(timeout=12000) as download_info:
-                try:
-                    _click_first_locator(
-                        page,
-                        [
-                            "xpath=//input[@value='Calcular']",
-                            "xpath=//*[self::a or self::span or self::div or self::td or self::button][normalize-space()='Calcular']",
-                        ],
-                    )
-                except ProjefWebAutomationError:
-                    _click_text_via_dom(page, "Calcular")
-            download = download_info.value
-            target = download_dir / (download.suggested_filename or suggested_name)
-            download.save_as(target)
-            if not target.exists() or target.stat().st_size == 0:
-                raise ProjefWebAutomationError(
-                    f"O navegador informou download, mas o arquivo nao ficou salvo em '{target}'."
-                )
-            browser.close()
-            return target
-        except TimeoutError as exc:
-            if _capture_pdf_from_existing_pages(page.context, target):
-                browser.close()
-                return target
+        last_exception = None
+        for tentativa in range(3):
             try:
-                with page.context.expect_page(timeout=8000) as popup_info:
+                page.goto(projef_url, wait_until="domcontentloaded")
+
+                _click_first_visible(page, ["Abrir"])
+                _wait_for_dialog_with_text(page, "Identificador")
+
+                identificador_selectors = [
+                    "xpath=//*[contains(@class, 'x-window') or contains(@class, 'x-panel') or contains(@class, 'x-layer')][.//*[contains(normalize-space(.), 'Identificador')]]//input[not(@type='hidden')][1]",
+                    "xpath=//*[contains(normalize-space(.), 'Identificador (8 letras e algarismos)')]/following::input[1]",
+                    "input[name*=identificador i]",
+                    "input[id*=identificador i]",
+                    "input[placeholder*=identificador i]",
+                    "input[type=text]",
+                ]
+                _fill_first_visible(page, identificador_selectors, case_data.identificador_projef)
+                _click_first_locator(
+                    page,
+                    [
+                        "xpath=//*[contains(@class, 'x-window') or contains(@class, 'x-panel') or contains(@class, 'x-layer')][.//*[contains(normalize-space(.), 'Identificador')]]//input[@value='OK']",
+                        "xpath=//*[contains(@class, 'x-window') or contains(@class, 'x-panel') or contains(@class, 'x-layer')][.//*[contains(normalize-space(.), 'Identificador')]]//*[self::button or self::span or self::div][normalize-space()='OK']",
+                    ],
+                )
+
+                sleep(1.5)
+
+                _click_tab_and_confirm(page, "Correcao Monetaria", "Atualizar para")
+
+                try:
+                    _overwrite_masked_input_next_to_text(page, "Atualizar para", target_data_base)
+                except ProjefWebAutomationError:
+                    _fill_input_next_to_text(page, "Atualizar para", target_data_base)
+
+                data_base_selectors = [
+                    "xpath=//*[contains(normalize-space(), 'Atualizar para')]/following::input[1]",
+                    "xpath=//td[contains(normalize-space(), 'Atualizar para')]/following::input[1]",
+                    "xpath=//label[contains(normalize-space(), 'Atualizar para')]/following::input[1]",
+                    "xpath=//input[contains(@value, '/20') and not(@type='hidden')]",
+                    "xpath=(//input[@type='text' and not(@readonly) and not(@disabled)])[last()]",
+                    "input[name*=atualizar i]",
+                    "input[id*=atualizar i]",
+                ]
+
+                _wait_for_input_value(page, data_base_selectors, target_data_base, timeout=5000)
+                _commit_input_value(page, data_base_selectors)
+                page.wait_for_timeout(2000)
+
+                _click_tab_and_confirm(page, "Dados Finais", "Calcular")
+
+                suggested_name = f"projef_{case_data.identificador_projef}.pdf"
+                target = download_dir / suggested_name
+
+                try:
+                    with page.expect_download(timeout=12000) as download_info:
+                        try:
+                            _click_first_locator(
+                                page,
+                                [
+                                    "xpath=//input[@value='Calcular']",
+                                    "xpath=//*[self::a or self::span or self::div or self::td or self::button][normalize-space()='Calcular']",
+                                ],
+                            )
+                        except ProjefWebAutomationError:
+                            _click_text_via_dom(page, "Calcular")
+                    download = download_info.value
+                    target = download_dir / (download.suggested_filename or suggested_name)
                     try:
-                        _click_first_locator(
-                            page,
-                            [
-                                "xpath=//input[@value='Calcular']",
-                                "xpath=//*[self::a or self::span or self::div or self::td or self::button][normalize-space()='Calcular']",
-                            ],
+                        download.save_as(target)
+                    except PermissionError:
+                        import time
+                        target = target.with_name(f"{target.stem}_{int(time.time())}{target.suffix}")
+                        download.save_as(target)
+                    if not target.exists() or target.stat().st_size == 0:
+                        raise ProjefWebAutomationError(
+                            f"O navegador informou download, mas o arquivo nao ficou salvo em '{target}'."
                         )
-                    except ProjefWebAutomationError:
-                        _click_text_via_dom(page, "Calcular")
-                pdf_page = popup_info.value
-                pdf_page.wait_for_load_state("domcontentloaded", timeout=10000)
-                if _save_pdf_from_page(pdf_page, target):
                     browser.close()
                     return target
-            except Exception:
-                pass
+                except TimeoutError as exc:
+                    if _capture_pdf_from_existing_pages(page.context, target):
+                        browser.close()
+                        return target
+                    try:
+                        with page.context.expect_page(timeout=8000) as popup_info:
+                            try:
+                                _click_first_locator(
+                                    page,
+                                    [
+                                        "xpath=//input[@value='Calcular']",
+                                        "xpath=//*[self::a or self::span or self::div or self::td or self::button][normalize-space()='Calcular']",
+                                    ],
+                                )
+                            except ProjefWebAutomationError:
+                                _click_text_via_dom(page, "Calcular")
+                        pdf_page = popup_info.value
+                        pdf_page.wait_for_load_state("domcontentloaded", timeout=10000)
+                        if _save_pdf_from_page(pdf_page, target):
+                            browser.close()
+                            return target
+                    except Exception:
+                        pass
 
-            browser.close()
-            raise ProjefWebAutomationError(
-                "O comando 'Calcular' foi acionado, mas nao consegui capturar o PDF nem por download nem por nova aba do navegador."
-            ) from exc
+                    raise ProjefWebAutomationError(
+                        "O comando 'Calcular' foi acionado, mas nao consegui capturar o PDF nem por download nem por nova aba do navegador."
+                    ) from exc
+
+            except Exception as e:
+                last_exception = e
+                _registrar_screenshot_erro(page, "erro_projef", download_dir)
+                target_data_base = decrementar_mes_competencia(target_data_base)
+                continue
+
+        browser.close()
+        raise ProjefWebAutomationError(
+            f"Falha ao gerar relatorio Projef apos tentar os 3 ultimos meses possiveis. Ultimo erro: {last_exception}"
+        ) from last_exception

@@ -348,74 +348,85 @@ def atualizar_relatorio_tcu(case_data: CaseData) -> Path:
     payload = montar_payload_tcu(case_data.lancamentos_tcu)
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=False)
+        browser = playwright.chromium.launch(headless=True)
         context = browser.new_context(accept_downloads=True)
         page = context.new_page()
-        page.goto(TCU_DEFAULT_URL, wait_until="domcontentloaded")
-
-        _fill_input_by_label(page, "Data atualizacao", data_atual_tcu())
-        _set_toggle(page, "Incluir juros", case_data.incluir_juros_tcu)
-
-        payload_file = salvar_payload_tcu(case_data.lancamentos_tcu, download_dir)
+        
         try:
-            _copiar_para_area_de_transferencia(payload)
-        except Exception:
-            pass
-        if not _importar_csv_tcu(page, payload_file):
-            browser.close()
-            raise TcuAutomationError(
-                "Nao consegui importar os lancamentos em lote pelo menu 'Importar > Somente parcelas CSV/TXT'. "
-                f"Os dados foram preparados em '{payload_file}' e tambem copiados para a area de transferencia."
-            )
+            page.goto(TCU_DEFAULT_URL, wait_until="domcontentloaded")
 
-        _expand_optional_info_tcu(page)
-        if case_data.devedor or case_data.cpf_cnpj:
-            responsavel = " - ".join(part for part in [case_data.devedor, case_data.cpf_cnpj] if part)
-            _fill_optional_field_tcu(page, "Responsável", responsavel)
-        if case_data.funcao_tcu:
-            _fill_optional_field_tcu(page, "Função", case_data.funcao_tcu)
-        origem_debito = case_data.origem_debito_tcu or " | ".join(
-            part
-            for part in [
-                case_data.processo,
-                case_data.nup_requerimento,
-                case_data.data_limite_resposta and f"Data limite: {case_data.data_limite_resposta}",
-                case_data.data_primeira_parcela and f"Entrada/1a parcela: {case_data.data_primeira_parcela}",
-                case_data.tipo_parcela,
-            ]
-            if part
-        )
-        if origem_debito:
-            _fill_optional_field_tcu(page, "Origem do débito", origem_debito)
+            _fill_input_by_label(page, "Data atualizacao", data_atual_tcu())
+            _set_toggle(page, "Incluir juros", case_data.incluir_juros_tcu)
 
-        _click_first_visible(page, ["Calcular Saldo"])
-        page.wait_for_timeout(1500)
-
-        try:
-            with page.expect_download(timeout=12000) as download_info:
-                page.get_by_text("Gerar Demonstrativo", exact=True).click()
-            download = download_info.value
-            target = download_dir / (download.suggested_filename or target.name)
-            download.save_as(target)
-            if not target.exists() or target.stat().st_size == 0:
+            payload_file = salvar_payload_tcu(case_data.lancamentos_tcu, download_dir)
+            try:
+                _copiar_para_area_de_transferencia(payload)
+            except Exception:
+                pass
+            if not _importar_csv_tcu(page, payload_file):
                 raise TcuAutomationError(
-                    f"O navegador informou download, mas o arquivo nao ficou salvo em '{target}'."
+                    "Nao consegui importar os lancamentos em lote pelo menu 'Importar > Somente parcelas CSV/TXT'. "
+                    f"Os dados foram preparados em '{payload_file}' e tambem copiados para a area de transferencia."
                 )
-            browser.close()
-            return target
-        except TimeoutError as exc:
-            if _capture_pdf_from_existing_pages(page.context, target):
+
+            _expand_optional_info_tcu(page)
+            if case_data.devedor or case_data.cpf_cnpj:
+                responsavel = " - ".join(part for part in [case_data.devedor, case_data.cpf_cnpj] if part)
+                _fill_optional_field_tcu(page, "Responsável", responsavel)
+            if case_data.funcao_tcu:
+                _fill_optional_field_tcu(page, "Função", case_data.funcao_tcu)
+            origem_debito = case_data.origem_debito_tcu or " | ".join(
+                part
+                for part in [
+                    case_data.processo,
+                    case_data.nup_requerimento,
+                    case_data.data_limite_resposta and f"Data limite: {case_data.data_limite_resposta}",
+                    case_data.data_primeira_parcela and f"Entrada/1a parcela: {case_data.data_primeira_parcela}",
+                    case_data.tipo_parcela,
+                ]
+                if part
+            )
+            if origem_debito:
+                _fill_optional_field_tcu(page, "Origem do débito", origem_debito)
+
+            _click_first_visible(page, ["Calcular Saldo"])
+            page.wait_for_timeout(1500)
+
+            try:
+                with page.expect_download(timeout=12000) as download_info:
+                    page.get_by_text("Gerar Demonstrativo", exact=True).click()
+                download = download_info.value
+                target = download_dir / (download.suggested_filename or target.name)
+                try:
+                    download.save_as(target)
+                except PermissionError:
+                    import time
+                    target = target.with_name(f"{target.stem}_{int(time.time())}{target.suffix}")
+                    download.save_as(target)
+                if not target.exists() or target.stat().st_size == 0:
+                    raise TcuAutomationError(
+                        f"O navegador informou download, mas o arquivo nao ficou salvo em '{target}'."
+                    )
                 browser.close()
                 return target
-            try:
-                _click_first_visible(page, ["Gerar Demonstrativo PDF", "Gerar Demonstrativo"])
-                page.wait_for_timeout(2000)
+            except TimeoutError as exc:
                 if _capture_pdf_from_existing_pages(page.context, target):
                     browser.close()
                     return target
-            except Exception:
-                pass
+                try:
+                    _click_first_visible(page, ["Gerar Demonstrativo PDF", "Gerar Demonstrativo"])
+                    page.wait_for_timeout(2000)
+                    if _capture_pdf_from_existing_pages(page.context, target):
+                        browser.close()
+                        return target
+                except Exception:
+                    pass
+                raise TcuAutomationError(
+                    "O demonstrativo TCU foi solicitado, mas nao consegui capturar o PDF nem por download nem por nova aba."
+                ) from exc
+                
+        except Exception as e:
+            from geracordo.projefweb import _registrar_screenshot_erro
+            _registrar_screenshot_erro(page, "erro_tcu", download_dir)
             browser.close()
-            raise TcuAutomationError(
-                "O demonstrativo TCU foi solicitado, mas nao consegui capturar o PDF nem por download nem por nova aba."
-            ) from exc
+            raise e

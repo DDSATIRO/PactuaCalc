@@ -14,7 +14,7 @@ from geracordo.models import CaseData, Subdebito, TcuLancamento, parse_iso_date
 
 SECTION_PATTERNS = {
     "RESUMO DO CALCULO": [r"RESUMO DO C.LCULO"],
-    "I - PARTES": [r"I - PARTES"],
+    "I - PARTES": [r"I - PARTES", r"I - SUCUMB.NCIAS"],
     "II - TOTALIZACAO": [r"II - TOTALIZA..O", r"II - TOTALIZACAO"],
     "OBSERVACOES DIGITADAS PELO USUARIO": [
         r"OBSERVA..ES DIGITADAS PELO USU.RIO",
@@ -199,6 +199,7 @@ def parse_partes_section(section_text: str, processo: str) -> list[Subdebito]:
         normalized_line = normalize_anchor_text(line)
         if (
             "TOTAL PARTES" in normalized_line
+            or "TOTAL DE SUCUMBENCIAS" in normalized_line
             or "PRINCIPAL CORRIGIDO" in normalized_line
             or "JUROS MORATORIOS" in normalized_line
             or "TOTAL (R$)" in normalized_line
@@ -211,14 +212,29 @@ def parse_partes_section(section_text: str, processo: str) -> list[Subdebito]:
         value = parse_brl_money(money_matches[-1])
         if value <= 0:
             continue
-        subdebitos.append(
-            Subdebito(
-                tipo="principal",
-                descricao=description or "Subdebito principal",
-                referencia_origem=processo or description or "",
-                valor_atualizado=value,
+            
+        is_honorarios = "HON" in normalized_line and ("ADV" in normalized_line or "SUCUMB" in normalized_line)
+        if is_honorarios:
+            subdebitos.append(
+                Subdebito(
+                    tipo="honorarios",
+                    descricao="Honorarios advocaticios",
+                    referencia_origem=processo or description or "Honorarios",
+                    valor_atualizado=value,
+                    ug="110060",
+                    gestao="00001",
+                    gru_cr="91719-9",
+                )
             )
-        )
+        else:
+            subdebitos.append(
+                Subdebito(
+                    tipo="principal",
+                    descricao=description or "Subdebito principal",
+                    referencia_origem=processo or description or "",
+                    valor_atualizado=value,
+                )
+            )
     return subdebitos
 
 
@@ -268,7 +284,7 @@ def parse_totalizacao_details(section_text: str) -> tuple[float, float]:
 
 
 def distribuir_multa_nos_subdebitos(subdebitos: list[Subdebito], multa_total: float, multa_percentual: float) -> None:
-    principais = [item for item in subdebitos if item.tipo == "principal"]
+    principais = [item for item in subdebitos if item.tipo in ("principal", "honorarios")]
     if not principais:
         return
 
@@ -379,13 +395,25 @@ def _extract_tcu_header_value(text: str, label: str) -> str:
 
 def _extract_tcu_header_value_normalized(text: str, label: str) -> str:
     target = normalize_anchor_text(label)
-    for line in text.splitlines():
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
         normalized_line = normalize_anchor_text(line)
         if target not in normalized_line:
             continue
         parts = line.split(":", 1)
         if len(parts) == 2:
-            return parts[1].strip()
+            extracted = parts[1].strip()
+            for j in range(i + 1, len(lines)):
+                next_line = lines[j].strip()
+                if not next_line:
+                    continue
+                next_norm = normalize_anchor_text(next_line)
+                if ":" in next_line:
+                    break
+                if any(x in next_norm for x in ["HISTORICO", "PERIODO", "VALOR ORIGINAL", "DATA", "SALDO TOTAL"]):
+                    break
+                extracted += " " + next_line
+            return extracted.strip()
     return ""
 
 

@@ -164,11 +164,19 @@ class MainWindow:
         self.notes_text.pack(fill="both", expand=True)
 
     def _build_header(self, parent: ttk.Labelframe) -> None:
+        mandatory_fields = {
+            "processo", "devedor", "cpf_cnpj", "data_atualizacao",
+            "tipo_parcela", "data_limite_resposta", "data_primeira_parcela"
+        }
+
         for idx, (field_name, label) in enumerate(CASE_FIELDS):
             row = idx // 4
             col = (idx % 4) * 2
-            ttk.Label(parent, text=label).grid(row=row, column=col, sticky="w", padx=6, pady=4)
-            entry = ttk.Entry(parent, textvariable=self.case_vars[field_name], width=34)
+            
+            lbl_text = f"{label}*" if field_name in mandatory_fields else label
+            ttk.Label(parent, text=lbl_text).grid(row=row, column=col, sticky="w", padx=6, pady=4)
+            
+            entry = tk.Entry(parent, textvariable=self.case_vars[field_name], width=34, relief="groove")
             entry.grid(
                 row=row,
                 column=col + 1,
@@ -176,6 +184,16 @@ class MainWindow:
                 padx=6,
                 pady=4,
             )
+            
+            if field_name in mandatory_fields:
+                def on_change(*args, widget=entry, var=self.case_vars[field_name]):
+                    if not var.get().strip():
+                        widget.configure(bg="#ffcccc")
+                    else:
+                        widget.configure(bg="white")
+                self.case_vars[field_name].trace_add("write", on_change)
+                on_change()
+
             if field_name == "valor_bloqueado_geral":
                 entry.bind("<FocusOut>", self.on_bloco_geral_focus_out)
                 entry.bind("<FocusIn>", self.on_select_all_entry)
@@ -397,6 +415,51 @@ class MainWindow:
             return False
         return parsed_date.replace(day=1) < date.today().replace(day=1)
 
+    def run_with_loading(self, title: str, message: str, target_func, *args, **kwargs):
+        import time
+        import threading
+
+        loading = tk.Toplevel(self.root)
+        loading.title(title)
+        loading.geometry("450x130")
+        loading.transient(self.root)
+        loading.grab_set()
+        loading.resizable(False, False)
+
+        ttk.Label(loading, text=message, wraplength=410, justify="center").pack(pady=(20, 10))
+        progress = ttk.Progressbar(loading, mode="indeterminate", length=300)
+        progress.pack()
+        progress.start()
+
+        result = None
+        exec_error = None
+
+        def worker():
+            nonlocal result, exec_error
+            try:
+                result = target_func(*args, **kwargs)
+            except Exception as e:
+                exec_error = e
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+
+        while thread.is_alive():
+            try:
+                self.root.update()
+            except tk.TclError:
+                pass
+            time.sleep(0.05)
+
+        try:
+            loading.destroy()
+        except tk.TclError:
+            pass
+
+        if exec_error:
+            raise exec_error
+        return result
+
     def _maybe_update_incoming_report(self, report_type: str, incoming: CaseData) -> CaseData:
         if not self._report_requires_update(report_type, incoming):
             return incoming
@@ -412,8 +475,16 @@ class MainWindow:
             )
             if not should_update:
                 return incoming
-            updated_path = atualizar_relatorio_projef(incoming)
+            updated_path = self.run_with_loading(
+                "Atualizando no Projef",
+                "Conectando ao sistema extrator... Isso pode demorar.",
+                atualizar_relatorio_projef,
+                incoming,
+            )
             self.status_var.set(f"Relatorio Projef atualizado antes da insercao: {updated_path}")
+            if messagebox.askyesno("Conferencia", "Relatorio atualizado.\n\nDeseja abrir o PDF gerado agora para conferencia?"):
+                import os
+                os.startfile(updated_path)
             return parse_projef_report(updated_path)
 
         should_update = messagebox.askyesno(
@@ -426,8 +497,16 @@ class MainWindow:
         )
         if not should_update:
             return incoming
-        updated_path = atualizar_relatorio_tcu(incoming)
+        updated_path = self.run_with_loading(
+            "Atualizando no TCU",
+            "Navegando no portal TCU em background... Aguarde.",
+            atualizar_relatorio_tcu,
+            incoming,
+        )
         self.status_var.set(f"Relatorio TCU atualizado antes da insercao: {updated_path}")
+        if messagebox.askyesno("Conferencia", "Relatorio atualizado.\n\nDeseja abrir o PDF gerado agora para conferencia?"):
+            import os
+            os.startfile(updated_path)
         return parse_tcu_report(updated_path)
 
     def _load_case_from_pdf(self, path: str, expected_type: str | None = None, merge: bool = False) -> None:
@@ -717,17 +796,18 @@ class MainWindow:
     def update_from_projef(self) -> None:
         self.sync_case_from_form()
         try:
-            updated_path = atualizar_relatorio_projef(self.case_data)
+            updated_path = self.run_with_loading(
+                "Atualizando no Projef",
+                "Acessando portal da JF em segundo plano e recalculando o demonstrativo...",
+                atualizar_relatorio_projef,
+                self.case_data,
+            )
             self.case_data = parse_projef_report(updated_path)
             self.refresh_all()
             self.status_var.set(f"Relatorio atualizado: {updated_path}")
-            messagebox.showinfo(
-                "ProjefWeb",
-                (
-                    "Relatorio atualizado com sucesso.\n\n"
-                    f"Arquivo salvo em:\n{updated_path}"
-                ),
-            )
+            if messagebox.askyesno("Relatorio Gerado", "Relatorio atualizado com sucesso no ProjefWeb!\n\nDeseja abrir o PDF para conferencia?"):
+                import os
+                os.startfile(updated_path)
         except ProjefWebAutomationError as exc:
             messagebox.showwarning("ProjefWeb", str(exc))
         except Exception as exc:
@@ -736,19 +816,20 @@ class MainWindow:
     def update_from_tcu(self) -> None:
         self.sync_case_from_form()
         try:
-            updated_path = atualizar_relatorio_tcu(self.case_data)
+            updated_path = self.run_with_loading(
+                "Atualizando no TCU",
+                "Navegando no portal do TCU em segundo plano... Isso pode demorar.",
+                atualizar_relatorio_tcu,
+                self.case_data,
+            )
             incoming = parse_tcu_report(updated_path)
             self.case_data, conflicts = replace_tcu_case_data(self.case_data, incoming)
             self.resolve_merge_conflicts(conflicts)
             self.refresh_all()
             self.status_var.set(f"Relatorio TCU atualizado: {updated_path}")
-            messagebox.showinfo(
-                "TCU",
-                (
-                    "Relatorio TCU atualizado com sucesso.\n\n"
-                    f"Arquivo salvo em:\n{updated_path}"
-                ),
-            )
+            if messagebox.askyesno("Relatorio Gerado", "Relatorio TCU atualizado com sucesso!\n\nDeseja abrir o PDF gerado para conferencia?"):
+                import os
+                os.startfile(updated_path)
         except TcuAutomationError as exc:
             messagebox.showwarning("TCU", str(exc))
         except Exception as exc:
