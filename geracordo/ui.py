@@ -273,16 +273,7 @@ class MainWindow:
             padx=8,
             pady=2,
         )
-        ttk.Button(
-            batch_frame,
-            text="Atualizar via PROJEFWEB",
-            command=self.update_from_projef,
-        ).grid(row=0, column=7, padx=(12, 0), pady=2, sticky="e")
-        ttk.Button(
-            batch_frame,
-            text="Atualizar via TCU",
-            command=self.update_from_tcu,
-        ).grid(row=0, column=8, padx=(8, 0), pady=2, sticky="e")
+
         ttk.Label(
             batch_frame,
             text="Selecione um ou mais subdebitos na grade para preencher UG/Gestao e GRU(CR) de uma vez.",
@@ -444,10 +435,16 @@ class MainWindow:
 
         loading = tk.Toplevel(self.root)
         loading.title(title)
-        loading.geometry("450x130")
         loading.transient(self.root)
         loading.grab_set()
         loading.resizable(False, False)
+        
+        loading.update_idletasks()
+        width = 450
+        height = 130
+        x = (loading.winfo_screenwidth() - width) // 2
+        y = (loading.winfo_screenheight() - height) // 2
+        loading.geometry(f"{width}x{height}+{x}+{y}")
 
         ttk.Label(loading, text=message, wraplength=410, justify="center").pack(pady=(20, 10))
         progress = ttk.Progressbar(loading, mode="indeterminate", length=300)
@@ -614,7 +611,23 @@ class MainWindow:
         selected_codes = self.collect_proposal_generation_options()
         if not selected_codes:
             return
+            
+        from geracordo.proposals import build_proposal_scenarios
+        scenarios = build_proposal_scenarios(self.case_data, selected_codes=selected_codes)
+        
+        if not self.show_proposal_preview(scenarios):
+            return
+
+        import datetime
+        import re
+        processo_clean = re.sub(r'[\.\-]', '', self.case_data.processo) if self.case_data.processo else "SPROC"
+        devedor_clean = (self.case_data.devedor or "SDEV")[:30].strip()
+        timestamp = datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
+        
+        default_name = f"PROPOSTA-{processo_clean}-{devedor_clean}-{timestamp}.pdf"
+
         path = filedialog.asksaveasfilename(
+            initialfile=default_name,
             title="Salvar proposta em PDF",
             defaultextension=".pdf",
             filetypes=[("Arquivos PDF", "*.pdf")],
@@ -631,6 +644,66 @@ class MainWindow:
                 f"e bloqueio efetivo de {format_currency_br(total)}."
             ),
         )
+
+    def show_proposal_preview(self, scenarios: list) -> bool:
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Pre-visualizacao das Opcoes Geradas")
+        dialog.geometry("900x650")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        main_frame = ttk.Frame(dialog, padding=12)
+        main_frame.pack(fill="both", expand=True)
+        
+        text = tk.Text(main_frame, wrap="word", font=("Consolas", 10))
+        scroll = ttk.Scrollbar(main_frame, orient="vertical", command=text.yview)
+        text.configure(yscrollcommand=scroll.set)
+        
+        scroll.pack(side="right", fill="y")
+        text.pack(side="top", fill="both", expand=True, pady=(0, 12))
+        
+        from geracordo.formatting import format_currency_br, format_percent_br
+        
+        for sc in scenarios:
+            text.insert("end", f"[{sc.codigo}] {sc.modalidade.upper()}\n", "title")
+            text.insert("end", f"  • Desconto: {format_percent_br(sc.desconto_percentual)} ({format_currency_br(sc.desconto_valor)})\n", "normal")
+            text.insert("end", f"  • Entrada GRU: {format_currency_br(sc.entrada_gru)}\n", "normal")
+            text.insert("end", f"  • Saldo remanescente: {format_currency_br(sc.saldo_remanescente)} em {sc.parcelas}x de {format_currency_br(sc.valor_parcela)}\n", "normal")
+            text.insert("end", f"\n  ▶ VALOR FINAL: {format_currency_br(sc.valor_final)}\n", "highlight")
+            if sc.observacao:
+                text.insert("end", f"\n  Obs: {sc.observacao}\n\n", "obs")
+            else:
+                text.insert("end", "\n")
+            
+            for r in (sc.rows or []):
+                text.insert("end", f"      -> {r.descricao[:45]}...: Saldo {format_currency_br(r.saldo)}, Parcela {format_currency_br(r.parcela)}\n", "sub")
+                
+            text.insert("end", "\n" + "=" * 85 + "\n\n", "separator")
+            
+        text.tag_configure("title", font=("Segoe UI", 12, "bold"), foreground="#003399", spacing3=5)
+        text.tag_configure("normal", font=("Segoe UI", 10), spacing1=2)
+        text.tag_configure("highlight", font=("Segoe UI", 11, "bold"), foreground="#b30000")
+        text.tag_configure("obs", font=("Segoe UI", 9, "italic"), foreground="#4d4d4d")
+        text.tag_configure("sub", font=("Consolas", 9), foreground="#666666")
+        text.tag_configure("separator", foreground="#cccccc")
+        text.configure(state="disabled")
+        
+        result = [False]
+        def on_generate():
+            result[0] = True
+            dialog.destroy()
+            
+        def on_back():
+            dialog.destroy()
+            
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(side="bottom", fill="x")
+        
+        ttk.Button(btn_frame, text="Voltar para Edicao", command=on_back).pack(side="left", padx=8)
+        tk.Button(btn_frame, text="Gerar PDF da Proposta", command=on_generate, bg="#d9f7be", font=("Segoe UI", 10, "bold")).pack(side="right", padx=8)
+        
+        self.root.wait_window(dialog)
+        return result[0]
 
     def collect_proposal_generation_options(self) -> set[str]:
         dialog = tk.Toplevel(self.root)
@@ -816,48 +889,6 @@ class MainWindow:
         self.refresh_subdebitos()
         self.status_var.set(f"Codigos aplicados em {len(self.selected_subdebito_indices)} subdebito(s).")
 
-    def update_from_projef(self) -> None:
-        self.sync_case_from_form()
-        try:
-            updated_path = self.run_with_loading(
-                "Atualizando no Projef",
-                "Navegando no portal ProjefWeb em background... Aguarde.",
-                atualizar_relatorio_projef,
-                self.case_data,
-            )
-            self.case_data = parse_projef_report(updated_path)
-            self.refresh_all()
-            self.status_var.set(f"Relatorio atualizado: {updated_path}")
-            if messagebox.askyesno("Relatorio Gerado", "Relatorio atualizado com sucesso no ProjefWeb!\n\nDeseja abrir o PDF para conferencia?"):
-                import os
-                os.startfile(updated_path)
-        except ProjefWebAutomationError as exc:
-            messagebox.showwarning("ProjefWeb", str(exc))
-        except Exception as exc:
-            messagebox.showerror("Erro no ProjefWeb", str(exc))
-
-    def update_from_tcu(self) -> None:
-        self.sync_case_from_form()
-        try:
-            updated_path = self.run_with_loading(
-                "Atualizando no TCU",
-                "Navegando no portal do TCU em segundo plano... Isso pode demorar.",
-                atualizar_relatorio_tcu,
-                self.case_data,
-            )
-            incoming = parse_tcu_report(updated_path)
-            self.case_data, conflicts = replace_tcu_case_data(self.case_data, incoming)
-            self.resolve_merge_conflicts(conflicts)
-            self.refresh_all()
-            self.status_var.set(f"Relatorio TCU atualizado: {updated_path}")
-            if messagebox.askyesno("Relatorio Gerado", "Relatorio TCU atualizado com sucesso!\n\nDeseja abrir o PDF gerado para conferencia?"):
-                import os
-                os.startfile(updated_path)
-        except TcuAutomationError as exc:
-            messagebox.showwarning("TCU", str(exc))
-        except Exception as exc:
-            messagebox.showerror("Erro no TCU", str(exc))
-
     def resolve_merge_conflicts(self, conflicts: list[MergeConflict]) -> None:
         for conflict in conflicts:
             label = FIELD_LABELS.get(conflict.field_name, conflict.field_name.replace("_", " ").title())
@@ -968,6 +999,7 @@ class MainWindow:
 
 def launch_app() -> None:
     root = tk.Tk()
+    root.state("zoomed")
     style = ttk.Style(root)
     if "vista" in style.theme_names():
         style.theme_use("vista")

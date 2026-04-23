@@ -336,6 +336,8 @@ def _add_parcelas_individualmente(page, lancamentos: list[TcuLancamento]) -> Non
 
 def atualizar_relatorio_tcu(case_data: CaseData) -> Path:
     if not case_data.lancamentos_tcu:
+        raise TcuAutomationError("Nao existem lancamentos TCU na memoria para este caso. Importe um relatorio TCU previamente gerado primeiro.")
+    if not case_data.lancamentos_tcu:
         raise TcuAutomationError("Nao encontrei lancamentos do relatorio TCU para reenviar ao site.")
 
     try:
@@ -344,7 +346,16 @@ def atualizar_relatorio_tcu(case_data: CaseData) -> Path:
         raise TcuAutomationError(f"Playwright indisponivel: {exc}") from exc
 
     download_dir = pasta_preferencial_relatorios()
-    target = download_dir / f"tcu_{date.today().strftime('%Y%m%d')}.pdf"
+    
+    import re
+    from datetime import datetime
+    processo_clean = re.sub(r'[\.\-]', '', case_data.processo) if case_data.processo else "SPROC"
+    devedor_clean = (case_data.devedor or "SDEV")[:30].strip()
+    timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
+    
+    filename = f"Demonstrativo-TCU-{processo_clean}-{devedor_clean}-{timestamp}.pdf"
+    target = download_dir / filename
+    
     payload = montar_payload_tcu(case_data.lancamentos_tcu)
 
     with sync_playwright() as playwright:

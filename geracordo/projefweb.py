@@ -536,7 +536,12 @@ def atualizar_relatorio_projef(case_data: CaseData) -> Path:
 
                 _click_tab_and_confirm(page, "Dados Finais", "Calcular")
 
-                suggested_name = f"projef_{case_data.identificador_projef}.pdf"
+                import re
+                import datetime
+                processo_clean = re.sub(r'[\.\-]', '', case_data.processo) if case_data.processo else "SPROC"
+                devedor_clean = (case_data.devedor or "SDEV")[:30].strip()
+                timestamp = datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
+                suggested_name = f"Demonstrativo-Projef-{processo_clean}-{devedor_clean}-{timestamp}.pdf"
                 target = download_dir / suggested_name
 
                 try:
