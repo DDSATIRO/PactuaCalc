@@ -493,6 +493,8 @@ def _extract_tcu_saldo_total(resumo_text: str) -> float:
 
 def _infer_tcu_subdebito_tipo(origem_debito: str) -> str:
     normalized = normalize_anchor_text(origem_debito)
+    if "SEM HONORAR" in normalized:
+        return "principal"
     if "HONORAR" in normalized:
         return "honorarios"
     return "principal"

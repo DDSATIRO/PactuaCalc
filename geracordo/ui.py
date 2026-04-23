@@ -97,21 +97,14 @@ class MainWindow:
 
         tk.Button(
             toolbar,
-            text="Criar a partir de Relatorio ProjefWeb",
-            command=self.load_projef_pdf,
+            text="Criar a partir de Relatorio TCU/PROJEF",
+            command=self.create_from_any_pdf,
             bg="#fff1b8",
             activebackground="#ffe58f",
         ).pack(side="left", padx=(0, 8))
         tk.Button(
             toolbar,
-            text="Criar a partir de Relatorio TCU",
-            command=self.load_tcu_pdf,
-            bg="#fff1b8",
-            activebackground="#ffe58f",
-        ).pack(side="left", padx=(0, 8))
-        tk.Button(
-            toolbar,
-            text="Adicionar outro relatorio",
+            text="Adicionar outro relatorio TCU/PROJEF",
             command=self.add_other_report,
             bg="#fff1b8",
             activebackground="#ffe58f",
@@ -166,31 +159,65 @@ class MainWindow:
     def _build_header(self, parent: ttk.Labelframe) -> None:
         mandatory_fields = {
             "processo", "devedor", "cpf_cnpj", "data_atualizacao",
-            "tipo_parcela", "data_limite_resposta", "data_primeira_parcela"
+            "tipo_parcela", "data_limite_resposta", "data_primeira_parcela", "nup_requerimento"
         }
 
-        for idx, (field_name, label) in enumerate(CASE_FIELDS):
-            row = idx // 4
-            col = (idx % 4) * 2
+        field_layout = {
+            "processo": {"row": 0, "col": 0, "colspan": 1},
+            "devedor": {"row": 0, "col": 2, "colspan": 3},
+            "cpf_cnpj": {"row": 0, "col": 6, "colspan": 1},
+            "nup_requerimento": {"row": 1, "col": 0, "colspan": 1},
+            "competencia_atualizacao": {"row": 1, "col": 2, "colspan": 1},
+            "data_atualizacao": {"row": 1, "col": 4, "colspan": 1},
+            "tipo_parcela": {"row": 1, "col": 6, "colspan": 1},
+            "data_limite_resposta": {"row": 2, "col": 0, "colspan": 1},
+            "data_primeira_parcela": {"row": 2, "col": 2, "colspan": 1},
+            "multa_percentual": {"row": 2, "col": 4, "colspan": 1},
+            "valor_bloqueado_geral": {"row": 2, "col": 6, "colspan": 1},
+        }
+
+        for field_name, label in CASE_FIELDS:
+            pos = field_layout.get(field_name)
+            if not pos:
+                continue
+            
+            row = pos["row"]
+            col = pos["col"]
+            colspan = pos["colspan"]
             
             lbl_text = f"{label}*" if field_name in mandatory_fields else label
             ttk.Label(parent, text=lbl_text).grid(row=row, column=col, sticky="w", padx=6, pady=4)
             
-            entry = tk.Entry(parent, textvariable=self.case_vars[field_name], width=34, relief="groove")
+            if field_name == "tipo_parcela":
+                entry = ttk.Combobox(
+                    parent,
+                    textvariable=self.case_vars[field_name],
+                    values=["VARIAVEL (POS-FIXADO)", "FIXO (PREFIXADO)"],
+                    state="readonly",
+                    width=31,
+                )
+            else:
+                entry = tk.Entry(parent, textvariable=self.case_vars[field_name], width=34, relief="groove")
+            
             entry.grid(
                 row=row,
                 column=col + 1,
+                columnspan=colspan,
                 sticky="ew",
                 padx=6,
                 pady=4,
             )
             
+            if field_name == "competencia_atualizacao":
+                entry.configure(state="readonly")
+            
             if field_name in mandatory_fields:
                 def on_change(*args, widget=entry, var=self.case_vars[field_name]):
-                    if not var.get().strip():
-                        widget.configure(bg="#ffcccc")
-                    else:
-                        widget.configure(bg="white")
+                    if type(widget) is tk.Entry:
+                        if not var.get().strip():
+                            widget.configure(bg="#ffcccc")
+                        else:
+                            widget.configure(bg="white")
                 self.case_vars[field_name].trace_add("write", on_change)
                 on_change()
 
@@ -204,8 +231,10 @@ class MainWindow:
                     command=self.apply_general_block,
                 ).grid(row=row, column=8, sticky="ew", padx=(6, 0), pady=4)
 
-        for col in range(8):
-            parent.columnconfigure(col, weight=1)
+        for _col in range(8):
+            parent.columnconfigure(_col, weight=1)
+        parent.columnconfigure(3, weight=1)
+        parent.columnconfigure(5, weight=1)
         parent.columnconfigure(8, weight=0)
 
     def _build_subdebito_grid(self, parent: ttk.Labelframe) -> None:
@@ -280,10 +309,13 @@ class MainWindow:
         self.summary_tree.column("valor_total", width=160, anchor="center")
         self.summary_tree.grid(row=0, column=0, sticky="nsew")
         self.summary_tree.bind("<<TreeviewSelect>>", self.on_select_summary)
+        
+        self.summary_tree.tag_configure("missing_code", foreground="red")
+        
         summary_scroll = ttk.Scrollbar(summary_frame, orient="vertical", command=self.summary_tree.yview)
         summary_scroll.grid(row=0, column=1, sticky="ns")
         self.summary_tree.configure(yscrollcommand=summary_scroll.set)
-        ttk.Label(summary_frame, text="Descricao").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(summary_frame, text="Descricao Consolidada").grid(row=1, column=0, sticky="w", pady=(8, 0))
         summary_editor = ttk.Frame(summary_frame)
         summary_editor.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(4, 0))
         summary_editor.columnconfigure(0, weight=1)
@@ -354,27 +386,18 @@ class MainWindow:
         ).grid(row=len(editable_fields) + 3, column=0, columnspan=2, sticky="w", padx=6, pady=12)
         parent.columnconfigure(1, weight=1)
 
-    def load_projef_pdf(self) -> None:
+    def create_from_any_pdf(self) -> None:
         paths = filedialog.askopenfilenames(
-            title="Selecione um ou mais relatorios PROJEF Web",
+            title="Selecione um ou mais relatorios TCU/PROJEF Web",
             filetypes=[("Arquivos PDF", "*.pdf")],
         )
         if not paths:
             return
-        self._load_case_from_pdfs(list(paths), expected_type="projef")
-
-    def load_tcu_pdf(self) -> None:
-        paths = filedialog.askopenfilenames(
-            title="Selecione um ou mais relatorios TCU",
-            filetypes=[("Arquivos PDF", "*.pdf")],
-        )
-        if not paths:
-            return
-        self._load_case_from_pdfs(list(paths), expected_type="tcu")
+        self._load_case_from_pdfs(list(paths), expected_type=None)
 
     def add_other_report(self) -> None:
         paths = filedialog.askopenfilenames(
-            title="Selecione um ou mais relatorios para adicionar",
+            title="Selecione um ou mais relatorios TCU/PROJEF para adicionar",
             filetypes=[("Arquivos PDF", "*.pdf")],
         )
         if not paths:
@@ -477,7 +500,7 @@ class MainWindow:
                 return incoming
             updated_path = self.run_with_loading(
                 "Atualizando no Projef",
-                "Conectando ao sistema extrator... Isso pode demorar.",
+                "Navegando no portal ProjefWeb em background... Aguarde.",
                 atualizar_relatorio_projef,
                 incoming,
             )
@@ -798,7 +821,7 @@ class MainWindow:
         try:
             updated_path = self.run_with_loading(
                 "Atualizando no Projef",
-                "Acessando portal da JF em segundo plano e recalculando o demonstrativo...",
+                "Navegando no portal ProjefWeb em background... Aguarde.",
                 atualizar_relatorio_projef,
                 self.case_data,
             )
@@ -909,18 +932,26 @@ class MainWindow:
         for item in self.summary_tree.get_children():
             self.summary_tree.delete(item)
         for index, item in enumerate(consolidated):
-            item_id = f"{item.ug_gestao or '-'}|{item.gru_cr or '-'}|{index}"
+            ug = item.ug_gestao or "-"
+            gru = item.gru_cr or "-"
+            item_id = f"{ug}|{gru}|{index}"
+
+            tags = ()
+            if ug == "-" or gru == "-":
+                tags = ("missing_code",)
+
             self.summary_tree.insert(
                 "",
                 "end",
                 iid=item_id,
                 values=(
                     item.descricao,
-                    item.ug_gestao or "-",
-                    item.gru_cr or "-",
+                    ug,
+                    gru,
                     format_currency_br(item.valor_bloqueado),
                     format_currency_br(item.valor_total),
                 ),
+                tags=tags,
             )
         if self.selected_summary_key:
             for row_id in self.summary_tree.get_children():

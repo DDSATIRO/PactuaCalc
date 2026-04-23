@@ -188,7 +188,9 @@ class CaseData:
                 errors.append("Processo e obrigatorio.")
             elif not (CNJ_PATTERN.fullmatch(self.processo) or NUP_PATTERN.fullmatch(self.processo)):
                 errors.append("Processo deve respeitar formato CNJ ou NUP.")
-            if self.nup_requerimento and not NUP_PATTERN.fullmatch(self.nup_requerimento):
+            if not self.nup_requerimento:
+                errors.append("NUP do requerimento e obrigatorio.")
+            elif not NUP_PATTERN.fullmatch(self.nup_requerimento):
                 errors.append("NUP do requerimento deve respeitar o padrao administrativo.")
             if not self.devedor:
                 errors.append("Devedor e obrigatorio.")
@@ -204,6 +206,8 @@ class CaseData:
                 errors.append("Tipo de parcela e obrigatorio.")
             if self.multa_percentual < 0:
                 errors.append("Multa (%) nao pode ser negativa.")
+            if self.multa_percentual > 20.0:
+                errors.append("Multa (%) nao pode exceder o limite maximo de 20,00.")
             if not self.data_limite_resposta:
                 errors.append("Data limite para resposta e obrigatoria.")
             if not self.data_primeira_parcela:
@@ -219,6 +223,8 @@ class CaseData:
                 errors.append("Data de atualizacao deve estar em formato YYYY-MM-DD ou DD/MM/YYYY.")
             if self.multa_percentual < 0:
                 errors.append("Multa (%) nao pode ser negativa.")
+            if self.multa_percentual > 20.0:
+                errors.append("Multa (%) nao pode exceder o limite maximo de 20,00.")
 
         data_limite = parse_iso_date(self.data_limite_resposta)
         data_primeira = parse_iso_date(self.data_primeira_parcela)
