@@ -263,6 +263,9 @@ def build_proposal_scenarios(case_data: CaseData, selected_codes: set[str] | Non
 
 def _render_header(layout: ProposalPdfLayout, case_data: CaseData, consolidated: list[Subdebito]) -> None:
     layout.block_title("QUADRO DEMONSTRATIVO DE OPCOES DE PAGAMENTO", fill=(0.90, 0.93, 0.96))
+    import getpass
+    usuario_os = getpass.getuser()
+
     layout.key_value_grid(
         [
             ("Processo", case_data.processo),
@@ -274,6 +277,7 @@ def _render_header(layout: ProposalPdfLayout, case_data: CaseData, consolidated:
             ("Data Limite para Resposta", case_data.data_limite_resposta or "-", (0.76, 0.08, 0.08)),
             ("Data da Entrada/Primeira Parcela", case_data.data_primeira_parcela or "-", (0.76, 0.08, 0.08)),
             ("Multa", format_percent_br(case_data.multa_percentual)),
+            ("Usuario", usuario_os),
         ]
     )
     if case_data.condicoes_adicionais:
@@ -450,4 +454,26 @@ def create_proposal_pdf(case_data: CaseData, output_path: str | Path, selected_c
     _render_conditions(layout, case_data)
 
     target = Path(output_path)
+    import datetime
+    hoje = datetime.datetime.now().strftime("%d/%m/%Y")
+    nup = case_data.nup_requerimento or "-"
+    devedor = (case_data.devedor or "Devedor").upper()
+    footer_text = f"NUP: {nup}   |   Devedor: {devedor}   |   Gerado em: {hoje}"
+    
+    escaped_footer = footer_text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+    y_footer = 12.0
+    margin_x = 24.0
+    footer_commands = [
+        "q",
+        "BT",
+        "/F1 8.00 Tf",
+        "0.40 0.40 0.40 rg",
+        f"1 0 0 1 {margin_x:.2f} {y_footer:.2f} Tm",
+        f"({escaped_footer}) Tj",
+        "ET",
+        "Q"
+    ]
+    for page_commands in pdf.pages:
+        page_commands.extend(footer_commands)
+
     return pdf.save(target)

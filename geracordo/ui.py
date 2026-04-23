@@ -504,21 +504,14 @@ class MainWindow:
                 atualizar_relatorio_projef,
                 incoming,
             )
-            import shutil
-            save_path = filedialog.asksaveasfilename(
-                initialfile=Path(updated_path).name,
-                title="Salvar atualizado (ProjefWeb)",
-                defaultextension=".pdf",
-                filetypes=[("Arquivos PDF", "*.pdf")],
-            )
-            if save_path:
-                shutil.copy2(updated_path, save_path)
-                updated_path = Path(save_path)
-
-            self.status_var.set(f"Relatorio Projef atualizado antes da insercao: {updated_path}")
-            if messagebox.askyesno("Conferencia", "Relatorio atualizado no ProjefWeb com sucesso!\n\nDeseja abrir o PDF gerado web agora para conferencia?"):
-                import os
+            
+            import os
+            try:
                 os.startfile(updated_path)
+            except Exception:
+                pass
+
+            self.status_var.set(f"Relatorio Projef atualizado e aberto automaticamente: {updated_path.name}")
             return parse_projef_report(str(updated_path))
 
         should_update = messagebox.askyesno(
@@ -537,21 +530,14 @@ class MainWindow:
             atualizar_relatorio_tcu,
             incoming,
         )
-        import shutil
-        save_path = filedialog.asksaveasfilename(
-            initialfile=Path(updated_path).name,
-            title="Salvar atualizado (TCU)",
-            defaultextension=".pdf",
-            filetypes=[("Arquivos PDF", "*.pdf")],
-        )
-        if save_path:
-            shutil.copy2(updated_path, save_path)
-            updated_path = Path(save_path)
-            
-        self.status_var.set(f"Relatorio TCU atualizado antes da insercao: {updated_path}")
-        if messagebox.askyesno("Conferencia", "Relatorio atualizado no TCU com sucesso!\n\nDeseja abrir o PDF gerado pela web agora para conferencia?"):
-            import os
+        
+        import os
+        try:
             os.startfile(updated_path)
+        except Exception:
+            pass
+            
+        self.status_var.set(f"Relatorio TCU atualizado e aberto automaticamente: {updated_path.name}")
         return parse_tcu_report(str(updated_path))
 
     def _load_case_from_pdf(self, path: str, expected_type: str | None = None, merge: bool = False) -> None:
