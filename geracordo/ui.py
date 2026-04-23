@@ -620,7 +620,8 @@ class MainWindow:
             messagebox.showwarning("Validacoes pendentes", "\n".join(errors))
             return
             
-        consolidated = self.case_data.get_consolidated_items()
+        from geracordo.services import consolidar_por_chave_arrecadatoria
+        consolidated = consolidar_por_chave_arrecadatoria(self.case_data.subdebitos)
         for item in consolidated:
             if not (item.codigo_ug_gestao or "").strip() or not (item.codigo_gru_cr or "").strip():
                 messagebox.showerror(
