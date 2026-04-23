@@ -467,8 +467,173 @@ def _capture_pdf_from_existing_pages(context, target: Path) -> bool:
     return False
 
 
+
+def _desmarcar_sicar_jf4r(page) -> None:
+    """Desmarca o checkbox 'Gerar Demonstrativo para Requisicao de Pagamento (SICAR-JF4R)'.
+
+    Quando um calculo nao tem CPF/CNPJ cadastrado para as partes, o ProjefWeb
+    bloqueia a geracao do PDF com o aviso 'Preencher o CPF/CNPJ para...'.
+    Desmarcar essa opcao na aba 'Dados Processo' elimina essa exigencia e
+    permite que o relatorio seja gerado normalmente.
+    """
+    try:
+        # Navega para a aba "Dados Processo" (pode ja estar ativa na primeira carga)
+        try:
+            _click_text_via_dom(page, "Dados Processo")
+            page.wait_for_timeout(600)
+        except Exception:
+            pass  # Se ja estiver na aba, segue normalmente
+
+        # Estrategia 1: checkbox associado a label com o texto SICAR
+        desmarcou = page.evaluate("""
+        () => {
+            const normalize = (v) =>
+                (v || "")
+                    .normalize("NFD")
+                    .replace(/[\u0300-\u036f]/g, "")
+                    .replace(/[\\s]+/g, " ")
+                    .trim()
+                    .toLowerCase();
+            const alvo = "sicar";
+            const visible = (el) => {
+                const s = window.getComputedStyle(el);
+                const r = el.getBoundingClientRect();
+                return s.visibility !== "hidden" && s.display !== "none" && r.width > 0 && r.height > 0;
+            };
+
+            // Busca label ou span que contenha "SICAR" e encontra o checkbox associado
+            const labels = Array.from(document.querySelectorAll("label, span, td, div"))
+                .filter(el => visible(el) && normalize(el.textContent).includes(alvo));
+
+            for (const label of labels) {
+                // Caso 1: label com atributo "for"
+                const forId = label.getAttribute && label.getAttribute("for");
+                if (forId) {
+                    const cb = document.getElementById(forId);
+                    if (cb && cb.type === "checkbox" && cb.checked) {
+                        cb.click();
+                        return true;
+                    }
+                }
+                // Caso 2: checkbox dentro do mesmo container
+                const container = label.closest("tr, div, td, li") || label.parentElement;
+                if (container) {
+                    const cb = container.querySelector("input[type='checkbox']");
+                    if (cb && cb.checked) {
+                        cb.click();
+                        return true;
+                    }
+                }
+                // Caso 3: checkbox anterior mais proximo visivel
+                const allCbs = Array.from(document.querySelectorAll("input[type='checkbox']"))
+                    .filter(el => visible(el));
+                const labelRect = label.getBoundingClientRect();
+                let best = null;
+                let bestDist = Infinity;
+                for (const cb of allCbs) {
+                    const r = cb.getBoundingClientRect();
+                    const dist = Math.abs(r.top - labelRect.top) + Math.abs(r.left - labelRect.left);
+                    if (dist < bestDist) { bestDist = dist; best = cb; }
+                }
+                if (best && best.checked) {
+                    best.click();
+                    return true;
+                }
+            }
+            return false;
+        }
+        """)
+        if desmarcou:
+            page.wait_for_timeout(400)
+            return
+
+        # Estrategia 2: usa Playwright get_by_label com variantes do texto
+        for texto in [
+            "Gerar Demonstrativo para Requisição de Pagamento",
+            "Gerar Demonstrativo para Requisicao de Pagamento",
+            "SICAR",
+            "SICAR-JF4R",
+        ]:
+            try:
+                cb = page.get_by_label(texto, exact=False).first
+                if cb.is_checked(timeout=500):
+                    cb.uncheck(force=True, timeout=1000)
+                    page.wait_for_timeout(400)
+                    return
+            except Exception:
+                pass
+
+    except Exception:
+        pass  # Nao interrompe o fluxo se nao conseguir desmarcar
+
+
+
+def _dispensar_dialogo_validacao_projef(page) -> None:
+    """Dispensa dialogos de validacao do ProjefWeb que aparecem como avisos nao bloqueantes.
+
+    Ex: "Preencher o CPF/CNPJ para HONORARIOS - INICIO DO CUMPRIMENTO"
+    Esses dialogos sao exibidos quando uma parte nao tem CPF/CNPJ cadastrado,
+    mas nao impedem a geracao do PDF — basta clicar OK para continuar.
+    """
+    try:
+        # Verifica se ha um dialogo com texto de validacao visivel
+        tem_validacao = page.evaluate("""
+        () => {
+            const normalize = (v) =>
+                (v || "")
+                    .normalize("NFD")
+                    .replace(/[\u0300-\u036f]/g, "")
+                    .replace(/\\s+/g, " ")
+                    .trim()
+                    .toLowerCase();
+            const visible = (el) => {
+                const s = window.getComputedStyle(el);
+                const r = el.getBoundingClientRect();
+                return s.visibility !== "hidden" && s.display !== "none" && r.width > 0 && r.height > 0;
+            };
+            const sinais = ["validacao", "preencher", "cpf", "cnpj", "obrigatorio"];
+            return Array.from(document.querySelectorAll("div, span, td, p"))
+                .some(el => visible(el) && sinais.some(s => normalize(el.textContent).includes(s)));
+        }
+        """)
+        if not tem_validacao:
+            return
+        # Tenta clicar em qualquer botao OK ou Fechar visiveis
+        for label in ["OK", "Ok", "ok", "Fechar", "Continuar", "Sim"]:
+            try:
+                btn = page.get_by_role("button", name=label).first
+                if btn.is_visible(timeout=500):
+                    btn.click(timeout=1000)
+                    page.wait_for_timeout(500)
+                    return
+            except Exception:
+                pass
+        # Fallback via DOM: busca input[value='OK'] ou botoes com texto OK
+        page.evaluate("""
+        () => {
+            const normalize = (v) =>
+                (v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+            const visible = (el) => {
+                const s = window.getComputedStyle(el);
+                const r = el.getBoundingClientRect();
+                return s.visibility !== "hidden" && s.display !== "none" && r.width > 0 && r.height > 0;
+            };
+            const alvos = ["ok", "fechar", "continuar", "sim"];
+            const candidatos = Array.from(
+                document.querySelectorAll("input[type='button'], input[type='submit'], button, a")
+            ).filter(el => visible(el) && alvos.includes(normalize(el.value || el.textContent)));
+            if (candidatos[0]) candidatos[0].click();
+        }
+        """)
+        page.wait_for_timeout(500)
+    except Exception:
+        pass
+
+
+
 def atualizar_relatorio_projef(case_data: CaseData) -> Path:
     if not case_data.identificador_projef:
+
         raise ProjefWebAutomationError("Nao foi encontrado identificador do calculo no relatorio.")
 
     projef_url = os.environ.get("PROJEFWEB_URL", "").strip() or PROJEFWEB_DEFAULT_URL
@@ -513,7 +678,13 @@ def atualizar_relatorio_projef(case_data: CaseData) -> Path:
 
                 sleep(1.5)
 
+                # Sem CPF/CNPJ: desmarca "Gerar Demonstrativo para Requisicao de
+                # Pagamento (SICAR-JF4R)" para evitar o bloqueio de validacao do ProjefWeb.
+                if not case_data.cpf_cnpj:
+                    _desmarcar_sicar_jf4r(page)
+
                 _click_tab_and_confirm(page, "Correcao Monetaria", "Atualizar para")
+
 
                 try:
                     _overwrite_masked_input_next_to_text(page, "Atualizar para", target_data_base)
@@ -534,7 +705,16 @@ def atualizar_relatorio_projef(case_data: CaseData) -> Path:
                 _commit_input_value(page, data_base_selectors)
                 page.wait_for_timeout(2000)
 
-                _click_tab_and_confirm(page, "Dados Finais", "Calcular")
+                # Tenta navegar para a aba "Dados Finais" (layout moderno do ProjefWeb).
+                # No layout antigo (ex: 2021) essa aba pode não existir; nesse caso o
+                # botão "Calcular" já pode estar visível diretamente.
+                try:
+                    _click_tab_and_confirm(page, "Dados Finais", "Calcular")
+                except ProjefWebAutomationError:
+                    # Layout antigo: verifica se "Calcular" já está acessível sem aba
+                    calcular_visivel = _text_visible_in_page(page, "Calcular")
+                    if not calcular_visivel:
+                        raise
 
                 import re
                 import datetime
@@ -571,6 +751,38 @@ def atualizar_relatorio_projef(case_data: CaseData) -> Path:
                     browser.close()
                     return target
                 except TimeoutError as exc:
+                    # --- Verifica se o ProjefWeb exibiu um dialogo de validacao ---
+                    # Ex: "Preencher o CPF/CNPJ para HONORARIOS - INICIO DO CUMPRIMENTO"
+                    # Esse aviso nao bloqueia o calculo; basta clicar OK para continuar.
+                    _dispensar_dialogo_validacao_projef(page)
+
+                    # Tenta o download novamente apos dispensar o dialogo
+                    try:
+                        with page.expect_download(timeout=15000) as download_info2:
+                            try:
+                                _click_first_locator(
+                                    page,
+                                    [
+                                        "xpath=//input[@value='Calcular']",
+                                        "xpath=//*[self::a or self::span or self::div or self::td or self::button][normalize-space()='Calcular']",
+                                    ],
+                                )
+                            except ProjefWebAutomationError:
+                                _click_text_via_dom(page, "Calcular")
+                        download2 = download_info2.value
+                        target2 = download_dir / (download2.suggested_filename or suggested_name)
+                        try:
+                            download2.save_as(target2)
+                        except PermissionError:
+                            import time as _time
+                            target2 = target2.with_name(f"{target2.stem}_{int(_time.time())}{target2.suffix}")
+                            download2.save_as(target2)
+                        if target2.exists() and target2.stat().st_size > 0:
+                            browser.close()
+                            return target2
+                    except Exception:
+                        pass
+
                     if _capture_pdf_from_existing_pages(page.context, target):
                         browser.close()
                         return target
@@ -595,7 +807,9 @@ def atualizar_relatorio_projef(case_data: CaseData) -> Path:
                         pass
 
                     raise ProjefWebAutomationError(
-                        "O comando 'Calcular' foi acionado, mas nao consegui capturar o PDF nem por download nem por nova aba do navegador."
+                        "O comando 'Calcular' foi acionado, mas nao consegui capturar o PDF nem por download, "
+                        "nova aba nem por impressao da pagina. O layout deste calculo pode ser incompativel "
+                        "com a versao atual do ProjefWeb ou o calculo pode ter expirado."
                     ) from exc
 
             except Exception as e:

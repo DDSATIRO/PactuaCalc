@@ -24,9 +24,18 @@ SECTION_PATTERNS = {
 }
 
 IDENTIFICADOR_RE = re.compile(
-    r"(?:identificador\s+do\s+c[aá]lculo|id(?:entificador)?\s+do\s+c[aá]lculo)[^\w]?([a-z0-9-]{6,})",
+    r"(?:"
+    r"identificador\s+do\s+c[aá]lculo"
+    r"|id(?:entificador)?\s+do\s+c[aá]lculo"
+    r"|usando\s+o\s+identificador"
+    r")[^\w]?([a-zA-Z0-9-]{6,})",
     re.IGNORECASE,
 )
+IDENTIFICADOR_COLON_RE = re.compile(
+    r"identificador\s+projef\s*:\s*([a-zA-Z0-9-]{6,})",
+    re.IGNORECASE,
+)
+
 PROCESSO_RE = re.compile(r"\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}")
 NUP_RE = re.compile(r"\d{5}\.\d{6}/\d{4}-\d{2}")
 CPF_CNPJ_RE = re.compile(
@@ -36,7 +45,8 @@ COMPETENCIA_RE = re.compile(r"\b(0[1-9]|1[0-2])/\d{4}\b")
 DATE_RE = re.compile(r"\b([0-3]\d/[0-1]\d/\d{4})\b")
 MONEY_RE = re.compile(r"\d{1,3}(?:\.\d{3})*,\d{2}")
 IDENTIFICADOR_FOOTER_RE = re.compile(
-    r"IDENTIFICADOR\s+([A-Z0-9-]{6,})",
+    # Captura "IDENTIFICADOR XXXX" apenas quando XXXX contém digitos (não é palavra pura como PROJEF)
+    r"IDENTIFICADOR\s+([A-Z0-9-]*\d[A-Z0-9-]{4,})",
     flags=re.IGNORECASE,
 )
 TEXTUAL_DATE_RE = re.compile(
@@ -138,7 +148,11 @@ def find_label_value(text: str, labels: list[str]) -> str:
 def extract_identifier(text: str) -> str:
     raw_match = IDENTIFICADOR_RE.search(text)
     if raw_match:
-        return raw_match.group(1)
+        return raw_match.group(1).lower()
+
+    colon_match = IDENTIFICADOR_COLON_RE.search(text)
+    if colon_match:
+        return colon_match.group(1).lower()
 
     normalized_text = normalize_anchor_text(text)
     footer_match = IDENTIFICADOR_FOOTER_RE.search(normalized_text)
