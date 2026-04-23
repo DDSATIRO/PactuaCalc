@@ -272,11 +272,19 @@ def _render_header(layout: ProposalPdfLayout, case_data: CaseData, consolidated:
             ("Competencia", case_data.competencia_atualizacao or "-"),
             ("Atualizado em", case_data.data_atualizacao or "-"),
             ("Data limite", case_data.data_limite_resposta or "-"),
-            ("Primeira parcela", case_data.data_primeira_parcela or "-"),
-            ("Identificador PROJEF", case_data.identificador_projef or "-"),
+            ("Data da Entrada/Primeira Parcela", case_data.data_primeira_parcela or "-", (0.76, 0.08, 0.08)),
             ("Multa", format_percent_br(case_data.multa_percentual)),
         ]
     )
+    if case_data.condicoes_adicionais:
+        layout.paragraph(
+            f"Condicoes Adicionais: {case_data.condicoes_adicionais}",
+            size=10,
+            font="F2",
+            color=(0.76, 0.08, 0.08),
+            leading=14,
+        )
+        layout.cursor_y -= 4
     total_geral = round(sum(item.valor_total for item in consolidated), 2)
     layout.highlighted_total("VALOR TOTAL GERAL DEVIDO", format_currency_br(total_geral))
 
@@ -319,10 +327,8 @@ def _render_consolidated_table(layout: ProposalPdfLayout, consolidated: list[Sub
 def _render_deadline_callout(layout: ProposalPdfLayout, case_data: CaseData) -> None:
     data_limite = case_data.data_limite_resposta or "-"
     layout.callout(
-        title="Opte por uma das opções de parcelamento ofertadas abaixo.",
-        body="Escolha a modalidade desejada e encaminhe sua manifestação dentro do prazo indicado.",
-        accent_text=f'DATA LIMITE PARA RESPOSTA EM "{data_limite}"',
-        accent_first=True,
+        title="OPTE POR UMA DAS OPCOES DE PARCELAMENTO OFERTADAS ABAIXO.",
+        body=f"RESPONDER OBRIGATORIAMENTE ATE {data_limite}.",
     )
 
 
@@ -413,9 +419,6 @@ def _render_conditions(layout: ProposalPdfLayout, case_data: CaseData) -> None:
     layout.paragraph(CONDICOES_GERAIS, size=9.2, leading=12.4, justify=True)
     layout.block_title("OBSERVACOES", fill=(0.95, 0.98, 1.0))
     layout.paragraph(OBSERVACOES_PROPOSTA, size=9.2, leading=12.4, justify=True)
-    if case_data.condicoes_adicionais:
-        layout.block_title("CONDICOES ADICIONAIS", fill=(0.94, 0.97, 1.0))
-        layout.paragraph(case_data.condicoes_adicionais, size=9.4, leading=12.8, justify=True)
     layout.block_title("ATENCAO", fill=(1.0, 0.93, 0.93))
     layout.paragraph(
         ATENCAO_PROPOSTA,
@@ -427,14 +430,7 @@ def _render_conditions(layout: ProposalPdfLayout, case_data: CaseData) -> None:
     )
 
 
-def _render_deadline_callout(layout: ProposalPdfLayout, case_data: CaseData) -> None:
-    data_limite = case_data.data_limite_resposta or "-"
-    layout.callout(
-        title="OPTE POR UMA DAS OPCOES DE PARCELAMENTO OFERTADAS ABAIXO.",
-        body="Escolha a modalidade desejada e encaminhe sua manifestacao dentro do prazo indicado.",
-        accent_text=f'DATA LIMITE PARA RESPOSTA EM "{data_limite}"',
-        accent_first=True,
-    )
+    pass
 
 
 def create_proposal_pdf(case_data: CaseData, output_path: str | Path, selected_codes: set[str] | None = None) -> Path:

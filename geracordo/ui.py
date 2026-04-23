@@ -119,15 +119,6 @@ class MainWindow:
         ttk.Button(toolbar, text="Salvar Rascunho JSON", command=self.save_json).pack(
             side="left", padx=(0, 8)
         )
-        tk.Button(
-            toolbar,
-            text="Gerar proposta",
-            command=self.generate_proposal,
-            bg="#d9f7be",
-            activebackground="#b7eb8f",
-        ).pack(
-            side="left", padx=(0, 8)
-        )
         ttk.Button(toolbar, text="Sair", command=self.root.destroy).pack(side="right")
 
         self.status_var = tk.StringVar()
@@ -375,6 +366,18 @@ class MainWindow:
             text="Edicoes individuais de valor bloqueado prevalecem sobre o uso do valor geral.",
             wraplength=320,
         ).grid(row=len(editable_fields) + 3, column=0, columnspan=2, sticky="w", padx=6, pady=12)
+        
+        tk.Button(
+            parent,
+            text="GERAR OPÇÕES DA PROPOSTA",
+            command=self.generate_proposal,
+            bg="#d9f7be",
+            activebackground="#b7eb8f",
+            font=("Segoe UI", 12, "bold"),
+            height=2,
+            cursor="hand2",
+        ).grid(row=len(editable_fields) + 4, column=0, columnspan=2, sticky="ew", padx=12, pady=(12, 12))
+        
         parent.columnconfigure(1, weight=1)
 
     def create_from_any_pdf(self) -> None:
@@ -648,9 +651,15 @@ class MainWindow:
     def show_proposal_preview(self, scenarios: list) -> bool:
         dialog = tk.Toplevel(self.root)
         dialog.title("Pre-visualizacao das Opcoes Geradas")
-        dialog.geometry("900x650")
         dialog.transient(self.root)
         dialog.grab_set()
+        
+        dialog.update_idletasks()
+        width = 900
+        height = 650
+        x = (dialog.winfo_screenwidth() - width) // 2
+        y = (dialog.winfo_screenheight() - height) // 2
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
         
         main_frame = ttk.Frame(dialog, padding=12)
         main_frame.pack(fill="both", expand=True)
@@ -711,6 +720,13 @@ class MainWindow:
         dialog.transient(self.root)
         dialog.grab_set()
         dialog.resizable(False, False)
+        
+        dialog.update_idletasks()
+        width = 380
+        height = 360
+        x = (dialog.winfo_screenwidth() - width) // 2
+        y = (dialog.winfo_screenheight() - height) // 2
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
 
         ttk.Label(
             dialog,

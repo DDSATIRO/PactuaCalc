@@ -201,20 +201,25 @@ class ProposalPdfLayout:
             self.pdf.text(MARGIN_X + indent, self.cursor_y - size, rendered, size=size, font=font, color=color)
             self.cursor_y -= leading
 
-    def key_value_grid(self, items: list[tuple[str, str]]) -> None:
+    def key_value_grid(self, items: list[tuple[str, str] | tuple[str, str, tuple[float, float, float]]]) -> None:
         col_width = (PAGE_WIDTH - (MARGIN_X * 2)) / 2
         row_height = 16
         extra_gap = 6
         self.ensure_space((((len(items) + 1) // 2) * row_height) + 6)
         x_positions = [MARGIN_X, MARGIN_X + col_width]
-        for idx, (label, value) in enumerate(items):
+        for idx, item in enumerate(items):
+            if len(item) == 3:
+                label, value, value_color = item
+            else:
+                label, value = item
+                value_color = (0, 0, 0)
             row = idx // 2
             col = idx % 2
             y = self.cursor_y - (row * row_height)
             label_text = f"{label}: "
             label_width = self.estimate_width(label_text, 9)
             self.pdf.text(x_positions[col], y - 10, label_text, size=9, font="F2")
-            self.pdf.text(x_positions[col] + label_width + extra_gap, y - 10, value, size=9, font="F1")
+            self.pdf.text(x_positions[col] + label_width + extra_gap, y - 10, value, size=9, font="F2" if value_color != (0,0,0) else "F1", color=value_color)
         self.cursor_y -= (((len(items) + 1) // 2) * row_height) + 4
 
     def justified_text(self, text: str, width: float, font_size: float) -> str:
