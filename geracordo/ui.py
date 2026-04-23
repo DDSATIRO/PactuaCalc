@@ -623,10 +623,10 @@ class MainWindow:
         from geracordo.services import consolidar_por_chave_arrecadatoria
         consolidated = consolidar_por_chave_arrecadatoria(self.case_data.subdebitos)
         for item in consolidated:
-            if not (item.codigo_ug_gestao or "").strip() or not (item.codigo_gru_cr or "").strip():
+            if not (item.ug or "").strip() or not (item.gru_cr or "").strip():
                 messagebox.showerror(
                     "Campos Incompletos",
-                    f"ATENCAO: A parcela/subdebito consolidada '{item.descricao}' nao possui codigo UG/Gestao e/ou GRU(CR).\n\n"
+                    f"ATENCAO: O subdebito '{item.descricao}' nao possui UG/Gestao e/ou GRU(CR) preenchidos.\n\n"
                     "E obrigatorio preenche-los em TODOS os itens antes de gerar as opcoes."
                 )
                 return
