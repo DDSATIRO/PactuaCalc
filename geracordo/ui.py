@@ -504,11 +504,22 @@ class MainWindow:
                 atualizar_relatorio_projef,
                 incoming,
             )
+            import shutil
+            save_path = filedialog.asksaveasfilename(
+                initialfile=Path(updated_path).name,
+                title="Salvar atualizado (ProjefWeb)",
+                defaultextension=".pdf",
+                filetypes=[("Arquivos PDF", "*.pdf")],
+            )
+            if save_path:
+                shutil.copy2(updated_path, save_path)
+                updated_path = Path(save_path)
+
             self.status_var.set(f"Relatorio Projef atualizado antes da insercao: {updated_path}")
-            if messagebox.askyesno("Conferencia", "Relatorio atualizado.\n\nDeseja abrir o PDF gerado agora para conferencia?"):
+            if messagebox.askyesno("Conferencia", "Relatorio atualizado no ProjefWeb com sucesso!\n\nDeseja abrir o PDF gerado web agora para conferencia?"):
                 import os
                 os.startfile(updated_path)
-            return parse_projef_report(updated_path)
+            return parse_projef_report(str(updated_path))
 
         should_update = messagebox.askyesno(
             "Relatorio TCU defasado",
@@ -526,11 +537,22 @@ class MainWindow:
             atualizar_relatorio_tcu,
             incoming,
         )
+        import shutil
+        save_path = filedialog.asksaveasfilename(
+            initialfile=Path(updated_path).name,
+            title="Salvar atualizado (TCU)",
+            defaultextension=".pdf",
+            filetypes=[("Arquivos PDF", "*.pdf")],
+        )
+        if save_path:
+            shutil.copy2(updated_path, save_path)
+            updated_path = Path(save_path)
+            
         self.status_var.set(f"Relatorio TCU atualizado antes da insercao: {updated_path}")
-        if messagebox.askyesno("Conferencia", "Relatorio atualizado.\n\nDeseja abrir o PDF gerado agora para conferencia?"):
+        if messagebox.askyesno("Conferencia", "Relatorio atualizado no TCU com sucesso!\n\nDeseja abrir o PDF gerado pela web agora para conferencia?"):
             import os
             os.startfile(updated_path)
-        return parse_tcu_report(updated_path)
+        return parse_tcu_report(str(updated_path))
 
     def _load_case_from_pdf(self, path: str, expected_type: str | None = None, merge: bool = False) -> None:
         try:
@@ -611,6 +633,17 @@ class MainWindow:
         if errors:
             messagebox.showwarning("Validacoes pendentes", "\n".join(errors))
             return
+            
+        consolidated = self.case_data.get_consolidated_items()
+        for item in consolidated:
+            if not (item.codigo_ug_gestao or "").strip() or not (item.codigo_gru_cr or "").strip():
+                messagebox.showerror(
+                    "Campos Incompletos",
+                    f"ATENCAO: A parcela/subdebito consolidada '{item.descricao}' nao possui codigo UG/Gestao e/ou GRU(CR).\n\n"
+                    "E obrigatorio preenche-los em TODOS os itens antes de gerar as opcoes."
+                )
+                return
+
         selected_codes = self.collect_proposal_generation_options()
         if not selected_codes:
             return
@@ -638,6 +671,13 @@ class MainWindow:
         if not path:
             return
         pdf_path = create_proposal_pdf(self.case_data, path, selected_codes=selected_codes)
+        
+        import os
+        try:
+            os.startfile(pdf_path)
+        except Exception:
+            pass
+
         total = total_bloqueado_efetivo(self.case_data.subdebitos)
         self.status_var.set(f"PDF gerado: {Path(pdf_path).name}")
         messagebox.showinfo(
