@@ -10,3 +10,8 @@ pytest-cache-files-*/
 *.pdf
 *.csv
 *.docx
+
+# Build / empacotamento PyInstaller
+dist/
+build/
+*.spec
