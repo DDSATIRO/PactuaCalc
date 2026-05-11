@@ -24,15 +24,15 @@ from geracordo.tcuweb import TcuAutomationError, atualizar_relatorio_tcu
 
 CASE_FIELDS = [
     ("processo", "Processo"),
-    ("nup_requerimento", "NUP do requerimento"),
     ("devedor", "Devedor"),
     ("cpf_cnpj", "CPF/CNPJ"),
+    ("nup_requerimento", "NUP do requerimento"),
     ("competencia_atualizacao", "Competencia"),
     ("data_atualizacao", "Data de atualizacao"),
     ("tipo_parcela", "Tipo de parcela"),
-    ("multa_percentual", "Multa (%)"),
     ("data_limite_resposta", "Data limite resposta"),
     ("data_primeira_parcela", "Data da Entrada/Primeira Parcela"),
+    ("multa_percentual", "Multa (%)"),
     ("valor_bloqueado_geral", "Valor bloqueado geral"),
 ]
 
@@ -92,16 +92,28 @@ class MainWindow:
             self.case_data.multa_percentual = 10.0
 
     def show_about(self) -> None:
-        about_text = (
+        license_path = Path(__file__).parent.parent / "THIRD_PARTY_LICENSES.txt"
+        license_text = "Arquivo de licenças não encontrado."
+        if license_path.exists():
+            license_text = license_path.read_text(encoding="utf-8")
+            
+        about_win = tk.Toplevel(self.root)
+        about_win.title("Sobre o Geracordo")
+        about_win.geometry("600x450")
+        
+        header = (
             "Geracordo\n\n"
             "Copyright (c) 2026 ddsatiro\n"
             "Contato: ddsatiro@gmail.com\n\n"
             "Este software e de codigo aberto (Licenca MIT).\n"
-            "Utiliza componentes de terceiros sob licencas permissivas (Apache 2.0 e MIT), "
-            "como pdfplumber, playwright e requests.\n"
-            "Consulte o arquivo THIRD_PARTY_LICENSES.txt para detalhes integrais."
+            "Licencas de terceiros:\n"
+            "--------------------------------------------------\n"
         )
-        messagebox.showinfo("Sobre o Geracordo", about_text)
+        
+        txt = tk.Text(about_win, wrap="word", padx=10, pady=10)
+        txt.pack(fill="both", expand=True)
+        txt.insert("1.0", header + license_text)
+        txt.configure(state="disabled")
 
     def _build_layout(self) -> None:
         toolbar = ttk.Frame(self.root, padding=12)
@@ -159,6 +171,13 @@ class MainWindow:
         notes_frame.pack(fill="both", side="top", pady=(12, 0))
         self.notes_text = tk.Text(notes_frame, height=8, wrap="word")
         self.notes_text.pack(fill="both", expand=True)
+        self.notes_text.bind("<KeyRelease>", self._update_notes_bg)
+
+    def _update_notes_bg(self, event=None) -> None:
+        if not self.notes_text.get("1.0", "end-1c").strip():
+            self.notes_text.configure(bg="#ffcccc")
+        else:
+            self.notes_text.configure(bg="white")
 
     def _build_header(self, parent: ttk.Labelframe) -> None:
         mandatory_fields = {
@@ -1031,6 +1050,7 @@ class MainWindow:
                 self.case_vars[field_name].set(str(value))
         self.notes_text.delete("1.0", "end")
         self.notes_text.insert("1.0", self.case_data.condicoes_adicionais)
+        self._update_notes_bg()
         self.refresh_subdebitos()
         self.refresh_tcu_lancamentos()
 
