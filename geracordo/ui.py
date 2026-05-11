@@ -120,9 +120,22 @@ class MainWindow:
             side="left", padx=(0, 8)
         )
         ttk.Button(toolbar, text="Sair", command=self.root.destroy).pack(side="right")
+        ttk.Button(toolbar, text="Sobre", command=self.show_about).pack(side="right", padx=(0, 8))
 
         self.status_var = tk.StringVar()
         ttk.Label(toolbar, textvariable=self.status_var).pack(side="right", padx=(0, 12))
+
+    def show_about(self) -> None:
+        about_text = (
+            "Geracordo\n\n"
+            "Copyright (c) 2026 ddsatiro\n"
+            "Contato: ddsatiro@gmail.com\n\n"
+            "Este software e de codigo aberto (Licenca MIT).\n"
+            "Utiliza componentes de terceiros sob licencas permissivas (Apache 2.0 e MIT), "
+            "como pdfplumber, playwright e requests.\n"
+            "Consulte o arquivo THIRD_PARTY_LICENSES.txt para detalhes integrais."
+        )
+        messagebox.showinfo("Sobre o Geracordo", about_text)
 
         main = ttk.Frame(self.root)
         main.pack(fill="both", expand=True, padx=12, pady=(0, 12))
