@@ -4,9 +4,19 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from geracordo.formatting import format_currency_br, format_percent_br
-from geracordo.models import CaseData, Subdebito
+from geracordo.models import CaseData, Subdebito, parse_iso_date
 from geracordo.proposal_render import ProposalPdfLayout, SimplePdf
 from geracordo.services import consolidar_por_chave_arrecadatoria, total_bloqueado_efetivo
+from geracordo.selic_api import get_mean_selic_12_months
+import calendar
+from datetime import datetime, date
+
+def add_months(sourcedate: date, months: int) -> date:
+    month = sourcedate.month - 1 + months
+    year = sourcedate.year + month // 12
+    month = month % 12 + 1
+    day = min(sourcedate.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
 
 
 @dataclass
@@ -43,10 +53,10 @@ MODALIDADES = [
     {"codigo": "2", "modalidade": "Pagamento a vista", "parcelas": 1, "desconto": 0.0, "entrada_minima": 0.0},
     {"codigo": "3.A", "modalidade": "Parcelado sem entrada", "parcelas": 12, "desconto": 0.20, "entrada_minima": 0.0},
     {"codigo": "3.B", "modalidade": "Parcelado sem entrada", "parcelas": 24, "desconto": 0.15, "entrada_minima": 0.0},
-    {"codigo": "4.A", "modalidade": "Com entrada - curto prazo", "parcelas": 12, "desconto": 0.25, "entrada_minima": 0.20},
-    {"codigo": "4.B", "modalidade": "Com entrada - medio prazo", "parcelas": 24, "desconto": 0.20, "entrada_minima": 0.20},
-    {"codigo": "4.C", "modalidade": "Com entrada - intermediario", "parcelas": 36, "desconto": 0.10, "entrada_minima": 0.20},
-    {"codigo": "4.D", "modalidade": "Com entrada - longo prazo", "parcelas": 60, "desconto": 0.05, "entrada_minima": 0.20},
+    {"codigo": "4.A", "modalidade": "Com entrada", "parcelas": 12, "desconto": 0.25, "entrada_minima": 0.20},
+    {"codigo": "4.B", "modalidade": "Com entrada", "parcelas": 24, "desconto": 0.20, "entrada_minima": 0.20},
+    {"codigo": "4.C", "modalidade": "Com entrada", "parcelas": 36, "desconto": 0.10, "entrada_minima": 0.20},
+    {"codigo": "4.D", "modalidade": "Com entrada", "parcelas": 60, "desconto": 0.05, "entrada_minima": 0.20},
 ]
 
 
@@ -141,6 +151,7 @@ def _build_scenario_rows(
     entrada_total: float,
     parcelas: int,
     incluir_bloqueio_no_desconto: bool,
+    fator_ajuste_parcela: float = 1.0,
 ) -> list[ProposalRow]:
     total_divida = round(sum(item.valor_total for item in consolidated), 2)
     if total_divida <= 0:
@@ -160,7 +171,7 @@ def _build_scenario_rows(
     rows: list[ProposalRow] = []
     for item, desconto_item, entrada_item in zip(consolidated, desconto_shares, entrada_shares):
         saldo = round(max(item.valor_total - item.valor_bloqueado - entrada_item - desconto_item, 0.0), 2)
-        parcela = round(saldo / parcelas, 2) if parcelas else 0.0
+        parcela = round((saldo / parcelas) * fator_ajuste_parcela, 2) if parcelas else 0.0
         rows.append(
             ProposalRow(
                 descricao=item.descricao,
@@ -221,13 +232,60 @@ def build_proposal_scenarios(case_data: CaseData, selected_codes: set[str] | Non
 
         saldo = round(max(total_divida - total_bloqueado - entrada_gru - desconto_valor, 0.0), 2)
         parcelas = modalidade["parcelas"]
-        valor_parcela = round(saldo / parcelas, 2) if parcelas else 0.0
+        valor_parcela_base_pura = saldo / parcelas if parcelas else 0.0
+        valor_parcela = round(valor_parcela_base_pura, 2)
+
+        fator_ajuste_parcela = 1.0
+
+        if parcelas > 1 and case_data.tipo_parcela == "FIXO (PREFIXADO)":
+            media_selic = get_mean_selic_12_months(case_data.data_atualizacao)
+            
+            data_atual = parse_iso_date(case_data.data_atualizacao)
+            data_primeira = parse_iso_date(case_data.data_primeira_parcela)
+            if data_atual and data_primeira:
+                m_diff = (data_primeira.year - data_atual.year) * 12 + (data_primeira.month - data_atual.month)
+                m_diff = max(m_diff, 0)
+            else:
+                m_diff = 0
+
+            if modalidade["entrada_minima"] > 0 and entrada_gru > 0:
+                multiplicador = max(m_diff, 1)
+            else:
+                multiplicador = max(m_diff - 1, 0)
+                
+            valor_com_atraso = valor_parcela_base_pura * (1 + ((media_selic / 100) * multiplicador))
+            
+            # Cálculo da última parcela com juros simples a partir da parcela base pura
+            meses_ultima_parcela = multiplicador + parcelas - 1
+            indice_correcao = media_selic * meses_ultima_parcela
+            valor_ultima_parcela = valor_parcela_base_pura * (1 + (indice_correcao / 100))
+            
+            # A média aritmética da primeira e da última parcela
+            valor_final_prefixado = (valor_com_atraso + valor_ultima_parcela) / 2
+            
+            fator_ajuste_parcela = valor_final_prefixado / valor_parcela_base_pura if valor_parcela_base_pura else 1.0
+            valor_parcela = round(valor_final_prefixado, 2)
+            
+            selic_formatada = f"{media_selic:.4f}".replace(".", ",") + "%"
+            indice_formatado = f"{indice_correcao:.4f}".replace(".", ",") + "%"
+            
+            obs_prefixo = (
+                f"PARCELA PRÉ-FIXADA. MÉDIA SELIC ÚLTIMOS DOZE MESES: {selic_formatada}.\n"
+                f"Cálculo: Parcela inicial {format_currency_br(valor_com_atraso)}; "
+                f"Índice correção última parcela ({parcelas}ª) {indice_formatado}; "
+                f"Valor última parcela {format_currency_br(valor_ultima_parcela)}; "
+                f"Parcela Fixa (Média) {format_currency_br(valor_final_prefixado)}.\n"
+            )
+            observacao = obs_prefixo + observacao if observacao else obs_prefixo
+
+
         rows = _build_scenario_rows(
             consolidated,
             desconto_valor,
             entrada_gru,
             parcelas,
             incluir_bloqueio_no_desconto=case_data.proposal_rules.desconto_sobre_total,
+            fator_ajuste_parcela=fator_ajuste_parcela,
         )
         informacoes_bloqueio: list[str] = []
         if modalidade["entrada_minima"] > 0 and total_bloqueado > 0:
@@ -347,7 +405,7 @@ def _scenario_subtitle(case_data: CaseData, scenario: ProposalScenario, total_di
     if scenario.entrada_minima_percentual > 0:
         return (
             f"Entrada minima de {format_percent_br(scenario.entrada_minima_percentual)} sobre "
-            f"{format_currency_br(total_divida)}. Data da entrada: {case_data.data_primeira_parcela or '-'}."
+            f"{format_currency_br(total_divida)}."
         )
     return (
         f"Parcelamento em ate {scenario.parcelas}x. Desconto de {format_percent_br(scenario.desconto_percentual)} "
@@ -358,10 +416,27 @@ def _scenario_subtitle(case_data: CaseData, scenario: ProposalScenario, total_di
 def _render_scenario(layout: ProposalPdfLayout, case_data: CaseData, scenario: ProposalScenario, total_divida: float) -> None:
     color = (0.93, 0.95, 0.84) if scenario.codigo in {"2", "3.A", "3.B"} else (0.97, 0.93, 0.78)
     title = f"OPCAO {scenario.codigo}: {scenario.modalidade.upper()}"
-    title += " (PARCELA UNICA)" if scenario.parcelas == 1 else f" (ATE {scenario.parcelas}x)"
+    if scenario.parcelas == 1:
+        title += " (PARCELA UNICA)"
+    else:
+        if case_data.tipo_parcela == "FIXO (PREFIXADO)":
+            tipo_str = "PRÉ-FIXADAS"
+        elif "VARIAVEL" in (case_data.tipo_parcela or "").upper():
+            tipo_str = "VARIÁVEIS"
+        else:
+            tipo_str = "FIXAS"
+        title += f" ({scenario.parcelas} parcelas {tipo_str})"
     layout.block_title(title, fill=color)
+
+    if case_data.tipo_parcela == "FIXO (PREFIXADO)" and scenario.parcelas > 1:
+        total_bloqueado = round(sum(row.valor_bloqueado for row in scenario.rows or []), 2)
+        valor_prefixado = total_bloqueado + scenario.entrada_gru + (scenario.valor_parcela * scenario.parcelas)
+        texto_final = f"VALOR FINAL: {format_currency_br(scenario.valor_final)} (valor final considerando parcelas pré-fixadas: {format_currency_br(valor_prefixado)})"
+    else:
+        texto_final = f"VALOR FINAL: {format_currency_br(scenario.valor_final)} (valor sujeito a atualizacao mensal conforme condicoes gerais)"
+
     layout.paragraph(
-        f"VALOR FINAL: {format_currency_br(scenario.valor_final)} (valor sujeito a atualizacao mensal conforme condicoes gerais)",
+        texto_final,
         size=12,
         font="F2",
         color=(0.16, 0.24, 0.14),
@@ -370,8 +445,21 @@ def _render_scenario(layout: ProposalPdfLayout, case_data: CaseData, scenario: P
     layout.paragraph(_scenario_subtitle(case_data, scenario, total_divida), size=9, font="F3", leading=11)
     if scenario.observacao:
         layout.paragraph(scenario.observacao, size=8.6, leading=10.5, color=(0.30, 0.20, 0.12))
+    if scenario.entrada_minima_percentual > 0 and scenario.entrada_gru > 0:
+        data_primeira = case_data.data_primeira_parcela or "-"
+        data_segunda = "-"
+        if data_primeira != "-":
+            data_entrada_obj = parse_iso_date(data_primeira)
+            if data_entrada_obj:
+                next_month_day = add_months(data_entrada_obj, 1)
+                last_day = calendar.monthrange(next_month_day.year, next_month_day.month)[1]
+                data_segunda = f"{last_day:02d}/{next_month_day.month:02d}/{next_month_day.year}"
+        texto_data = f"Data da entrada: {data_primeira}   |   Data da primeira parcela: {data_segunda}"
+    else:
+        texto_data = f"Data da primeira parcela: {case_data.data_primeira_parcela or '-'}"
+
     layout.paragraph(
-        f"Data da primeira parcela: {case_data.data_primeira_parcela or '-'}",
+        texto_data,
         size=8.8,
         font="F2",
         color=(0.72, 0.12, 0.12),
@@ -401,16 +489,19 @@ def _render_scenario(layout: ProposalPdfLayout, case_data: CaseData, scenario: P
             format_currency_br(round(sum(row.parcela for row in scenario.rows or []), 2)),
         ]
     )
+    
+    parcela_header = "PARCELA\nPré-fixada" if case_data.tipo_parcela == "FIXO (PREFIXADO)" and scenario.parcelas > 1 else "PARCELA"
+    
     layout.table(
         headers=[
             "TIPO DE DEBITO",
             "UG / GRU",
-            "VALOR TOTAL(+523)",
+            "TOTAL (+Art. 523)",
             "BLOQ/DEP",
             "ENTRADA(GRU)",
-            f"DESCONTO ({format_percent_br(scenario.desconto_percentual)})",
+            f"DESCONTO\n({format_percent_br(scenario.desconto_percentual)})",
             "SALDO",
-            "PARCELA",
+            parcela_header,
         ],
         rows=rows,
         widths=[150, 115, 95, 80, 85, 80, 80, 80],
@@ -452,6 +543,33 @@ def create_proposal_pdf(case_data: CaseData, output_path: str | Path, selected_c
     for scenario in scenarios:
         _render_scenario(layout, case_data, scenario, total_divida)
     _render_conditions(layout, case_data)
+    
+    if case_data.tipo_parcela == "FIXO (PREFIXADO)":
+        from geracordo.selic_api import get_last_12_selic_rates
+        rates = get_last_12_selic_rates(case_data.data_atualizacao)
+        if rates:
+            layout.block_title("MEMORIA DE CALCULO - SELIC MEDIA (ULTIMOS 12 MESES)", fill=(0.92, 0.92, 0.92))
+            layout.paragraph("O parcelamento FIXO (Prefixado) e calculado com base na media aritmetica simples das ultimas 12 taxas mensais da Selic imediatamente anteriores ao mes da atualizacao da divida.", size=9, leading=11, color=(0.2, 0.2, 0.2))
+            layout.cursor_y -= 8
+            rows = []
+            total_val = 0.0
+            for r in rates:
+                v = float(r.get("valor", 0.0))
+                total_val += v
+                rows.append([r.get("data", "-"), f"{v:.4f}".replace(".", ",") + "%"])
+            
+            media = total_val / len(rates)
+            rows.append(["SOMA TOTAL", f"{total_val:.4f}".replace(".", ",") + "%"])
+            rows.append(["MEDIA ARITMETICA", f"{media:.4f}".replace(".", ",") + "%"])
+            
+            layout.table(
+                headers=["MES/ANO", "TAXA MENSAL"],
+                rows=rows,
+                widths=[150, 150],
+                header_fill=(0.88, 0.88, 0.88),
+                row_fill=(0.98, 0.98, 0.98),
+                total_row_indices={len(rows)-2, len(rows)-1}
+            )
 
     target = Path(output_path)
     import datetime

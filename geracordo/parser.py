@@ -231,7 +231,7 @@ def parse_partes_section(section_text: str, processo: str) -> list[Subdebito]:
         if is_honorarios:
             subdebitos.append(
                 Subdebito(
-                    tipo="honorarios",
+                    tipo="HONORÁRIOS",
                     descricao="Honorarios advocaticios",
                     referencia_origem=processo or description or "Honorarios",
                     valor_atualizado=value,
@@ -243,7 +243,7 @@ def parse_partes_section(section_text: str, processo: str) -> list[Subdebito]:
         else:
             subdebitos.append(
                 Subdebito(
-                    tipo="principal",
+                    tipo="PRINCIPAL",
                     descricao=description or "Subdebito principal",
                     referencia_origem=processo or description or "",
                     valor_atualizado=value,
@@ -263,7 +263,7 @@ def parse_honorarios(section_text: str) -> Subdebito | None:
         if not money_matches:
             continue
         return Subdebito(
-            tipo="honorarios",
+            tipo="HONORÁRIOS",
             descricao="Honorarios advocaticios",
             referencia_origem="Honorarios",
             valor_atualizado=parse_brl_money(money_matches[-1]),
@@ -508,10 +508,10 @@ def _extract_tcu_saldo_total(resumo_text: str) -> float:
 def _infer_tcu_subdebito_tipo(origem_debito: str) -> str:
     normalized = normalize_anchor_text(origem_debito)
     if "SEM HONORAR" in normalized:
-        return "principal"
+        return "PRINCIPAL"
     if "HONORAR" in normalized:
-        return "honorarios"
-    return "principal"
+        return "HONORÁRIOS"
+    return "PRINCIPAL"
 
 
 def parse_tcu_report(path: str | Path) -> CaseData:

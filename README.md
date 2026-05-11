@@ -1,33 +1,37 @@
 # GeraAcordo
 
-Base inicial do app descrito no documento tecnico consolidado do projeto PactuaMais.
+Base inicial do app descrito no documento técnico consolidado do projeto PactuaMais. O sistema atua como uma solução completa para análise, extração e geração de propostas de acordo a partir de débitos estruturados.
 
-## Escopo implementado nesta primeira entrega
+## Escopo Implementado
 
-- Leitura de relatorio PROJEF Web em PDF com `pdfplumber`.
-- Parsing orientado por ancoras textuais para campos centrais do cabecalho.
-- Estruturacao inicial de subdebitos a partir da secao `I - PARTES`.
-- Deteccao de honorarios a partir de `II - TOTALIZACAO`.
-- Persistencia e reabertura do caso em JSON.
-- Interface desktop em `tkinter` para revisar e editar os dados extraidos.
-- Validacoes principais do cabecalho e dos subdebitos.
+- **Leitura de Relatórios PDF**: Extração e parsing inteligente via `pdfplumber` de relatórios do **PROJEF Web** e do **TCU**.
+- **Automação Web**: Integração com Selenium para automatização do fluxo de acesso aos relatórios.
+- **Motor de Propostas e PDF**: Geração automatizada de propostas de acordo em formato PDF, contemplando:
+  - Cálculos de juros simples para parcelas pré-fixadas (histórico Selic via API do Banco Central).
+  - Quadro comparativo e cálculo detalhado de descontos e opções de carência.
+  - Demonstrações de médias mensais e consolidações por modalidade (Curto/Médio/Longo prazo, etc.).
+- **Subdébitos e Bloqueios Judiciais**:
+  - Classificação rigorosa em valores `PRINCIPAL` e `HONORÁRIOS`.
+  - Mecanismo de distribuição inteligente de saldo judicial bloqueado.
+- **Interface Gráfica (Desktop)**: Construída via `tkinter` para permitir edição de subdébitos, regras de aprovação e visualização prévia da proposta consolidada.
 
-## Como executar
+## Como Executar
 
 ```bash
 python app.py
 ```
 
-## Estrutura
+## Estrutura do Projeto
 
-- `app.py`: ponto de entrada.
-- `geracordo/models.py`: entidades, validacoes e persistencia.
-- `geracordo/parser.py`: parser inicial do PDF do PROJEF.
-- `geracordo/services.py`: regras de distribuicao de bloqueio e consolidacao basica.
-- `geracordo/ui.py`: interface desktop.
-- `tests/`: testes unitarios das regras ja implementadas.
+- `app.py`: Ponto de entrada da aplicação.
+- `geracordo/models.py`: Entidades (CaseData, Subdebito), validações e persistência em formato JSON.
+- `geracordo/parser.py`: Engine de parsing baseada em âncoras textuais para PDFs do PROJEF e TCU.
+- `geracordo/proposals.py` / `proposal_render.py`: Geração e desenho dinâmico de propostas de acordo (PDF).
+- `geracordo/services.py`: Regras de negócio de distribuição de bloqueio e consolidação de débito.
+- `geracordo/selic_api.py`: Integração com API de séries temporais do Banco Central.
+- `geracordo/ui.py`: Interface de usuário.
+- `tests/`: Suíte de testes unitários que validam a lógica e o parsing.
 
-## Observacoes
-
-- A automacao do PROJEF Web e o motor completo de propostas ainda nao foram implementados.
-- O parser foi preparado para trabalhar por ancoras textuais e deve ser refinado com PDFs reais conforme avancarmos.
+## Observações
+- A automação Web exige a presença do ChromeDriver e permissões de rede.
+- Os modelos de parcelamento foram ajustados para evitar a incidência de juros sobre juros nas propostas pré-fixadas (SELIC).

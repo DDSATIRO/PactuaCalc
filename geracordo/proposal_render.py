@@ -265,10 +265,10 @@ class ProposalPdfLayout:
         bottom_prefix: str | None = None,
         bottom_accent: str | None = None,
     ) -> None:
-        title_lines = self.wrap(title, PAGE_WIDTH - (MARGIN_X * 2) - 16, 11)
-        body_lines = self.wrap(body, PAGE_WIDTH - (MARGIN_X * 2) - 16, 10)
-        accent_lines = self.wrap(accent_text or "", PAGE_WIDTH - (MARGIN_X * 2) - 16, 13) if accent_text else []
-        content_height = 14 + (len(title_lines) * 14) + (len(body_lines) * 12) + (len(accent_lines) * 16) + (28 if bottom_prefix else 0) + 10
+        title_lines = self.wrap(title, PAGE_WIDTH - (MARGIN_X * 2) - 16, 11) if title else []
+        body_lines = self.wrap(body, PAGE_WIDTH - (MARGIN_X * 2) - 16, 10) if body else []
+        accent_lines = self.wrap(accent_text, PAGE_WIDTH - (MARGIN_X * 2) - 16, 13) if accent_text else []
+        content_height = 16 + (len(title_lines) * 14) + (len(body_lines) * 12) + (len(accent_lines) * 16) + (14 if bottom_prefix else 0)
         self.ensure_space(content_height + 10)
         y = self.cursor_y - content_height
         self.pdf.rect(MARGIN_X, y, PAGE_WIDTH - (MARGIN_X * 2), content_height, fill=fill, stroke=stroke, line_width=1.2)
@@ -289,8 +289,8 @@ class ProposalPdfLayout:
                 line_y -= 16
         if bottom_prefix and bottom_accent:
             self.pdf.text(MARGIN_X + 8, line_y, bottom_prefix, size=11, font="F2", color=(0.20, 0.18, 0.16))
-            line_y -= 14
-            self.pdf.text(MARGIN_X + 24, line_y, bottom_accent, size=12, font="F2", color=(0.76, 0.08, 0.08))
+            prefix_width = len(bottom_prefix) * 11 * 0.65
+            self.pdf.text(MARGIN_X + 8 + prefix_width, line_y, bottom_accent, size=11, font="F2", color=(0.76, 0.08, 0.08))
             line_y -= 14
         self.cursor_y = y - 10
 

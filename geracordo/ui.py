@@ -32,7 +32,7 @@ CASE_FIELDS = [
     ("tipo_parcela", "Tipo de parcela"),
     ("multa_percentual", "Multa (%)"),
     ("data_limite_resposta", "Data limite resposta"),
-    ("data_primeira_parcela", "Data primeira parcela"),
+    ("data_primeira_parcela", "Data da Entrada/Primeira Parcela"),
     ("valor_bloqueado_geral", "Valor bloqueado geral"),
 ]
 
@@ -218,7 +218,7 @@ class MainWindow:
                 entry.bind("<ButtonRelease-1>", self.on_select_all_entry)
                 ttk.Button(
                     parent,
-                    text="Aplicar bloqueio geral",
+                    text="Distribuir Bloqueio",
                     command=self.apply_general_block,
                 ).grid(row=row, column=8, sticky="ew", padx=(6, 0), pady=4)
 
@@ -329,13 +329,23 @@ class MainWindow:
         ]
         for idx, (field_name, label) in enumerate(editable_fields):
             ttk.Label(parent, text=label).grid(row=idx, column=0, sticky="w", padx=6, pady=4)
-            ttk.Entry(parent, textvariable=self.subdebito_vars[field_name], width=34).grid(
-                row=idx,
-                column=1,
-                sticky="ew",
-                padx=6,
-                pady=4,
-            )
+            if field_name == "tipo":
+                cb = ttk.Combobox(
+                    parent,
+                    textvariable=self.subdebito_vars[field_name],
+                    width=32,
+                    state="readonly",
+                    values=("PRINCIPAL", "HONORÁRIOS"),
+                )
+                cb.grid(row=idx, column=1, sticky="ew", padx=6, pady=4)
+            else:
+                ttk.Entry(parent, textvariable=self.subdebito_vars[field_name], width=34).grid(
+                    row=idx,
+                    column=1,
+                    sticky="ew",
+                    padx=6,
+                    pady=4,
+                )
 
         ttk.Button(parent, text="Atualizar subdebito", command=self.save_subdebito_edits).grid(
             row=len(editable_fields),
@@ -620,6 +630,17 @@ class MainWindow:
             messagebox.showwarning("Validacoes pendentes", "\n".join(errors))
             return
             
+        if self.case_data.tipo_parcela == "FIXO (PREFIXADO)":
+            try:
+                from geracordo.selic_api import update_selic_history
+                self.run_with_loading(
+                    "Atualizando Taxas Selic",
+                    "Buscando histórico atualizado de taxas Selic no Banco Central...",
+                    update_selic_history,
+                )
+            except Exception as e:
+                messagebox.showwarning("Erro na Selic", f"Nao foi possivel atualizar a base Selic. O sistema tentará usar a base local existente.\n\nDetalhes: {e}")
+            
         from geracordo.services import consolidar_por_chave_arrecadatoria
         consolidated = consolidar_por_chave_arrecadatoria(self.case_data.subdebitos)
         for item in consolidated:
@@ -701,11 +722,34 @@ class MainWindow:
         from geracordo.formatting import format_currency_br, format_percent_br
         
         for sc in scenarios:
-            text.insert("end", f"[{sc.codigo}] {sc.modalidade.upper()}\n", "title")
+            if sc.parcelas == 1:
+                ui_title = f"[{sc.codigo}] {sc.modalidade.upper()} (PARCELA UNICA)"
+            else:
+                if self.case_data.tipo_parcela == "FIXO (PREFIXADO)":
+                    tipo_str = "PRÉ-FIXADAS"
+                elif "VARIAVEL" in (self.case_data.tipo_parcela or "").upper():
+                    tipo_str = "VARIÁVEIS"
+                else:
+                    tipo_str = "FIXAS"
+                ui_title = f"[{sc.codigo}] {sc.modalidade.upper()} ({sc.parcelas} parcelas {tipo_str})"
+            
+            text.insert("end", ui_title + "\n", "title")
             text.insert("end", f"  • Desconto: {format_percent_br(sc.desconto_percentual)} ({format_currency_br(sc.desconto_valor)})\n", "normal")
             text.insert("end", f"  • Entrada GRU: {format_currency_br(sc.entrada_gru)}\n", "normal")
-            text.insert("end", f"  • Saldo remanescente: {format_currency_br(sc.saldo_remanescente)} em {sc.parcelas}x de {format_currency_br(sc.valor_parcela)}\n", "normal")
-            text.insert("end", f"\n  ▶ VALOR FINAL: {format_currency_br(sc.valor_final)}\n", "highlight")
+            text.insert("end", f"  • Saldo remanescente: {format_currency_br(sc.saldo_remanescente)}\n", "normal")
+            if sc.parcelas == 1:
+                text.insert("end", f"  • Pagamento: Parcela Unica de {format_currency_br(sc.valor_parcela)}\n", "normal")
+            else:
+                text.insert("end", f"  • Parcelamento: {sc.parcelas} parcelas mensais de {format_currency_br(sc.valor_parcela)}\n", "normal")
+            
+            if self.case_data.tipo_parcela == "FIXO (PREFIXADO)" and sc.parcelas > 1:
+                from geracordo.services import total_bloqueado_efetivo
+                tot_bloq = total_bloqueado_efetivo(self.case_data.subdebitos)
+                val_prefixado = tot_bloq + sc.entrada_gru + (sc.valor_parcela * sc.parcelas)
+                text.insert("end", f"\n  ▶ VALOR FINAL: {format_currency_br(val_prefixado)} (com Parcela Pre-fixada)\n", "highlight")
+            else:
+                text.insert("end", f"\n  ▶ VALOR FINAL: {format_currency_br(sc.valor_final)}\n", "highlight")
+                
             if sc.observacao:
                 text.insert("end", f"\n  Obs: {sc.observacao}\n\n", "obs")
             else:
@@ -822,7 +866,7 @@ class MainWindow:
 
     def add_subdebito(self) -> None:
         novo = Subdebito(
-            tipo="principal",
+            tipo="PRINCIPAL",
             descricao="Novo subdebito",
             referencia_origem=self.case_data.processo,
             valor_atualizado=0.0,
