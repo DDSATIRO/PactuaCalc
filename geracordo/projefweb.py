@@ -647,7 +647,7 @@ def atualizar_relatorio_projef(case_data: CaseData) -> Path:
     target_data_base = data_base_para_atualizacao(case_data)
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = playwright.chromium.launch(channel="msedge", headless=True)
         context = browser.new_context(accept_downloads=True)
         page = context.new_page()
 

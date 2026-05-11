@@ -359,7 +359,7 @@ def atualizar_relatorio_tcu(case_data: CaseData) -> Path:
     payload = montar_payload_tcu(case_data.lancamentos_tcu)
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = playwright.chromium.launch(channel="msedge", headless=True)
         context = browser.new_context(accept_downloads=True)
         page = context.new_page()
         
