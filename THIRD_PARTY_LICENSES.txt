@@ -9,7 +9,7 @@ This project uses the following third-party software:
    - License: MIT
    - URL: https://github.com/jsvine/pdfplumber
    - Description: Python library for extracting text and table structures from PDF documents
-   - Usage: PDF parsing for PROJEF Web reports
+   - Usage: PDF parsing for PROJEF Web e TCU reports
 
 2. PLAYWRIGHT
    - License: Apache License 2.0
@@ -17,46 +17,54 @@ This project uses the following third-party software:
    - Description: Browser automation library for web testing and automation
    - Usage: Automation of ProjefWeb and TCU website interactions
    - Note: Optional dependency - imported with error handling if unavailable
-   - Installs: Chromium browser binaries (BSD/MIT licensed)
-   
-   MIT License text:
-   --------
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
 
-   The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
+3. REQUESTS
+   - License: Apache License 2.0
+   - URL: https://requests.readthedocs.io/
+   - Description: Python HTTP library
+   - Usage: API communication for fetching Selic historical data
 
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE.
-   --------
+================================================================================
+LICENSE TEXTS
+================================================================================
 
-2. PLAYWRIGHT - Apache License 2.0
-   
-   License text (Summary):
-   --------
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
+MIT License text (Applies to pdfplumber):
+--------
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-       http://www.apache.org/licenses/LICENSE-2.0
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-   --------
-   Full License: https://www.apache.org/licenses/LICENSE-2.0
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+--------
+
+
+Apache License 2.0 text (Summary - Applies to playwright, requests):
+--------
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+--------
+Full License: https://www.apache.org/licenses/LICENSE-2.0
 
 ================================================================================
 PYTHON STANDARD LIBRARY
@@ -85,6 +93,7 @@ COMPATIBILITY SUMMARY
 Third-party licenses used:
 - pdfplumber: MIT (Permissive, no restrictions)
 - playwright: Apache License 2.0 (Permissive, includes patent protection)
+- requests: Apache License 2.0 (Permissive, includes patent protection)
 
 Both licenses allow:
 ✓ Commercial use permitted
@@ -93,7 +102,7 @@ Both licenses allow:
 ✓ Distribution permitted
 ✓ No virality clause (derivative works do not require same license)
 
-Playwright Apache 2.0 includes explicit patent grants and requires:
+Playwright and Requests Apache 2.0 include explicit patent grants and require:
 ✓ License and copyright notice in distributions
 ✓ State changes made to the code
 ✓ Otherwise, fully compatible with commercial use
