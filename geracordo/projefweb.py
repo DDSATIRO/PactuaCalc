@@ -701,9 +701,9 @@ def atualizar_relatorio_projef(case_data: CaseData) -> Path:
                     "input[id*=atualizar i]",
                 ]
 
-                _wait_for_input_value(page, data_base_selectors, target_data_base, timeout=5000)
+                _wait_for_input_value(page, data_base_selectors, target_data_base, timeout=15000)
                 _commit_input_value(page, data_base_selectors)
-                page.wait_for_timeout(2000)
+                page.wait_for_timeout(3000)
 
                 # Tenta navegar para a aba "Dados Finais" (layout moderno do ProjefWeb).
                 # No layout antigo (ex: 2021) essa aba pode não existir; nesse caso o
@@ -725,7 +725,7 @@ def atualizar_relatorio_projef(case_data: CaseData) -> Path:
                 target = download_dir / suggested_name
 
                 try:
-                    with page.expect_download(timeout=12000) as download_info:
+                    with page.expect_download(timeout=25000) as download_info:
                         try:
                             _click_first_locator(
                                 page,
@@ -815,7 +815,32 @@ def atualizar_relatorio_projef(case_data: CaseData) -> Path:
             except Exception as e:
                 last_exception = e
                 _registrar_screenshot_erro(page, "erro_projef", download_dir)
-                target_data_base = decrementar_mes_competencia(target_data_base)
+                # So decrementa o mes se o ProjefWeb explicitamente rejeitou a
+                # competencia (texto de erro mencionando a data-base ou
+                # impossibilidade de atualizar). Se for timeout de rede ou
+                # qualquer outro erro generico, repete com a mesma data.
+                erro_texto = str(e).lower()
+                rejeicao_explicita = any(
+                    trecho in erro_texto
+                    for trecho in [
+                        "nao refletiu o valor esperado",
+                        "data-base",
+                        "atualizar para",
+                        "competencia",
+                        "nao permitida",
+                        "indisponivel",
+                    ]
+                )
+                # Tambem verifica na pagina se ha mensagem de rejeicao
+                if not rejeicao_explicita:
+                    try:
+                        rejeicao_explicita = _text_visible_in_page(
+                            page, "nao permitida"
+                        ) or _text_visible_in_page(page, "indisponivel")
+                    except Exception:
+                        pass
+                if rejeicao_explicita:
+                    target_data_base = decrementar_mes_competencia(target_data_base)
                 continue
 
         browser.close()
