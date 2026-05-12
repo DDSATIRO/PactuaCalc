@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from time import sleep
 
-from geracordo.models import CaseData
+from pactuacalc.models import CaseData
 
 
 class ProjefWebAutomationError(RuntimeError):
@@ -79,7 +79,7 @@ def pasta_preferencial_relatorios() -> Path:
     for candidate in candidates:
         try:
             candidate.mkdir(parents=True, exist_ok=True)
-            test_file = candidate / ".geracordo_write_test"
+            test_file = candidate / ".pactuacalc_write_test"
             test_file.write_text("ok", encoding="utf-8")
             test_file.unlink()
             return candidate
@@ -847,3 +847,4 @@ def atualizar_relatorio_projef(case_data: CaseData) -> Path:
         raise ProjefWebAutomationError(
             f"Falha ao gerar relatorio Projef apos tentar os 3 ultimos meses possiveis. Ultimo erro: {last_exception}"
         ) from last_exception
+

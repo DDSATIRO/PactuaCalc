@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from geracordo.formatting import format_currency_br, format_percent_br
-from geracordo.models import CaseData, Subdebito, parse_iso_date
-from geracordo.proposal_render import ProposalPdfLayout, SimplePdf
-from geracordo.services import consolidar_por_chave_arrecadatoria, total_bloqueado_efetivo
-from geracordo.selic_api import get_mean_selic_12_months
+from pactuacalc.formatting import format_currency_br, format_percent_br
+from pactuacalc.models import CaseData, Subdebito, parse_iso_date
+from pactuacalc.proposal_render import ProposalPdfLayout, SimplePdf
+from pactuacalc.services import consolidar_por_chave_arrecadatoria, total_bloqueado_efetivo
+from pactuacalc.selic_api import get_mean_selic_12_months
 import calendar
 from datetime import datetime, date
 
@@ -545,7 +545,7 @@ def create_proposal_pdf(case_data: CaseData, output_path: str | Path, selected_c
     _render_conditions(layout, case_data)
     
     if case_data.tipo_parcela == "FIXO (PREFIXADO)":
-        from geracordo.selic_api import get_last_12_selic_rates
+        from pactuacalc.selic_api import get_last_12_selic_rates
         rates = get_last_12_selic_rates(case_data.data_atualizacao)
         if rates:
             layout.block_title("MEMORIA DE CALCULO - SELIC MEDIA (ULTIMOS 12 MESES)", fill=(0.92, 0.92, 0.92))
@@ -595,3 +595,4 @@ def create_proposal_pdf(case_data: CaseData, output_path: str | Path, selected_c
         page_commands.extend(footer_commands)
 
     return pdf.save(target)
+

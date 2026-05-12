@@ -1,4 +1,4 @@
-# GeraAcordo
+# PactuaCalc
 
 Base inicial do app descrito no documento técnico consolidado do projeto PactuaMais. O sistema atua como uma solução completa para análise, extração e geração de propostas de acordo a partir de débitos estruturados.
 
@@ -25,13 +25,13 @@ python app.py
 ## Estrutura do Projeto
 
 - `app.py`: Ponto de entrada — inclui verificação remota de versão antes de abrir a UI.
-- `geracordo/models.py`: Entidades (CaseData, Subdebito), validações e persistência em formato JSON.
-- `geracordo/parser.py`: Engine de parsing baseada em âncoras textuais para PDFs do PROJEF e TCU.
-- `geracordo/proposals.py` / `proposal_render.py`: Geração e desenho dinâmico de propostas de acordo (PDF).
-- `geracordo/services.py`: Regras de negócio de distribuição de bloqueio e consolidação de débito.
-- `geracordo/selic_api.py`: Integração com API de séries temporais do Banco Central.
-- `geracordo/version_check.py`: Sistema de controle remoto de versão via GitHub.
-- `geracordo/ui.py`: Interface de usuário (Tkinter).
+- `pactuacalc/models.py`: Entidades (CaseData, Subdebito), validações e persistência em formato JSON.
+- `pactuacalc/parser.py`: Engine de parsing baseada em âncoras textuais para PDFs do PROJEF e TCU.
+- `pactuacalc/proposals.py` / `proposal_render.py`: Geração e desenho dinâmico de propostas de acordo (PDF).
+- `pactuacalc/services.py`: Regras de negócio de distribuição de bloqueio e consolidação de débito.
+- `pactuacalc/selic_api.py`: Integração com API de séries temporais do Banco Central.
+- `pactuacalc/version_check.py`: Sistema de controle remoto de versão via GitHub.
+- `pactuacalc/ui.py`: Interface de usuário (Tkinter).
 - `version.json`: Arquivo de controle de versão remoto (editável diretamente no GitHub).
 - `tests/`: Suíte de testes unitários que validam a lógica e o parsing.
 
@@ -51,3 +51,4 @@ Sem internet, o app abre normalmente (degradação graciosa).
 - A automação Web utiliza o Microsoft Edge nativo (Windows 10/11) via Playwright — sem download de navegador separado.
 - Os modelos de parcelamento foram ajustados para evitar a incidência de juros sobre juros nas propostas pré-fixadas (SELIC).
 - A automação possui timeouts robustos para redes lentas e só decrementa a competência de atualização se o ProjefWeb explicitamente rejeitar a data.
+

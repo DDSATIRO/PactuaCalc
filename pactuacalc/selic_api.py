@@ -7,10 +7,10 @@ from datetime import datetime, timedelta
 BCB_SELIC_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.4390/dados"
 DATA_INICIAL_PADRAO = "01/01/1995"
 
-# Salva o cache em AppData\Local\Geracordo — gravavel mesmo dentro de um .exe empacotado
+# Salva o cache em AppData\Local\pactuacalc — gravavel mesmo dentro de um .exe empacotado
 _APP_DATA_DIR = os.path.join(
     os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
-    "Geracordo",
+    "pactuacalc",
 )
 os.makedirs(_APP_DATA_DIR, exist_ok=True)
 FILE_PATH = os.path.join(_APP_DATA_DIR, "selic_history.json")
@@ -117,7 +117,7 @@ def get_mean_selic_12_months(data_base_str: str) -> float:
         return 0.0
 
     # Parse da data_base
-    from geracordo.models import parse_iso_date
+    from pactuacalc.models import parse_iso_date
     data_base = parse_iso_date(data_base_str)
     if not data_base:
         return 0.0
@@ -146,7 +146,7 @@ def get_last_12_selic_rates(data_base_str: str) -> list[dict]:
     if not history:
         return []
 
-    from geracordo.models import parse_iso_date
+    from pactuacalc.models import parse_iso_date
     data_base = parse_iso_date(data_base_str)
     if not data_base:
         return []
@@ -161,3 +161,4 @@ def get_last_12_selic_rates(data_base_str: str) -> list[dict]:
             valid_rates.append(item)
             
     return valid_rates[-12:]
+

@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 
-from geracordo.version_check import verificar_versao
+from pactuacalc.version_check import verificar_versao
 
 
 def main() -> None:
@@ -10,19 +10,20 @@ def main() -> None:
     if not permitido:
         root = tk.Tk()
         root.withdraw()
-        messagebox.showerror("Geracordo — Versao bloqueada", mensagem_bloqueio)
+        messagebox.showerror("PactuaCalc — Versao bloqueada", mensagem_bloqueio)
         root.destroy()
         return
 
     if aviso_nova_versao:
         root = tk.Tk()
         root.withdraw()
-        messagebox.showinfo("Geracordo — Atualizacao disponivel", aviso_nova_versao)
+        messagebox.showinfo("PactuaCalc — Atualizacao disponivel", aviso_nova_versao)
         root.destroy()
 
-    from geracordo.ui import launch_app
+    from pactuacalc.ui import launch_app
     launch_app()
 
 
 if __name__ == "__main__":
     main()
+

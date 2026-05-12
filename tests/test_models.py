@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from geracordo.models import CaseData, Subdebito
-from geracordo.parser import split_sections
-from geracordo.services import consolidar_por_chave_arrecadatoria, distribuir_valor_bloqueado
+from pactuacalc.models import CaseData, Subdebito
+from pactuacalc.parser import split_sections
+from pactuacalc.services import consolidar_por_chave_arrecadatoria, distribuir_valor_bloqueado
 
 
 def build_valid_case() -> CaseData:
@@ -96,3 +96,4 @@ def test_split_sections_tolera_acentuacao_nas_ancoras() -> None:
     parsed = split_sections("RESUMO DO CÁLCULO\nabc\nI - PARTES\nxyz")
     assert "RESUMO DO CALCULO" in parsed.sections
     assert "I - PARTES" in parsed.sections
+

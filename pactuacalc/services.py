@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from geracordo.models import CaseData, Subdebito
+from pactuacalc.models import CaseData, Subdebito
 
 
 def distribuir_valor_bloqueado(case_data: CaseData) -> None:
@@ -245,3 +245,4 @@ def replace_tcu_case_data(base: CaseData, incoming: CaseData) -> tuple[CaseData,
             base.subdebitos = [replacement]
 
     return base, conflicts
+

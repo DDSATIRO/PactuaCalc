@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 from pathlib import Path
 
-from geracordo.models import CaseData, Subdebito
-from geracordo.parser import (
+from pactuacalc.models import CaseData, Subdebito
+from pactuacalc.parser import (
     _parse_tcu_lancamentos,
     _extract_tcu_saldo_debito,
     _extract_tcu_saldo_total,
@@ -15,9 +15,9 @@ from geracordo.parser import (
     parse_tcu_report,
     parse_totalizacao_details,
 )
-from geracordo.projefweb import competencia_esta_defasada
-from geracordo.proposals import build_proposal_scenarios, create_proposal_pdf
-from geracordo.services import merge_case_data, replace_tcu_case_data
+from pactuacalc.projefweb import competencia_esta_defasada
+from pactuacalc.proposals import build_proposal_scenarios, create_proposal_pdf
+from pactuacalc.services import merge_case_data, replace_tcu_case_data
 
 
 def build_valid_case() -> CaseData:
@@ -91,7 +91,7 @@ def test_build_proposal_scenarios_retorna_modalidades() -> None:
 
 def test_create_proposal_pdf_gera_arquivo() -> None:
     case = build_valid_case()
-    output_dir = Path("C:/Projetos/Geracordo")
+    output_dir = Path("C:/Projetos/pactuacalc")
     output = output_dir / "teste_proposta_saida.pdf"
     pdf_path = create_proposal_pdf(case, output)
     assert pdf_path.exists()
@@ -193,10 +193,10 @@ def test_replace_tcu_case_data_substitui_valor_e_preserva_campos_manuais() -> No
 
 
 def test_detect_report_type_reconhece_variacao_tcu_por_ancoras() -> None:
-    pdf_path = Path("C:/Projetos/Geracordo/teste_tcu_variacao_detector.pdf")
+    pdf_path = Path("C:/Projetos/pactuacalc/teste_tcu_variacao_detector.pdf")
     pdf_path.write_bytes(b"%PDF-1.4 placeholder")
 
-    import geracordo.parser as parser_module
+    import pactuacalc.parser as parser_module
 
     original = parser_module.extract_text_from_pdf
     parser_module.extract_text_from_pdf = lambda _path: (
@@ -215,7 +215,7 @@ def test_detect_report_type_reconhece_variacao_tcu_por_ancoras() -> None:
 
 
 def test_parse_tcu_report_identifica_datas_embutidas_no_texto() -> None:
-    import geracordo.parser as parser_module
+    import pactuacalc.parser as parser_module
 
     original = parser_module.extract_text_by_page
     parser_module.extract_text_by_page = lambda _path: [
@@ -244,3 +244,4 @@ def test_parse_tcu_report_identifica_datas_embutidas_no_texto() -> None:
 
 def test_competencia_from_date_converte_data_em_mes_ano() -> None:
     assert competencia_from_date("16/04/2026") == "04/2026"
+

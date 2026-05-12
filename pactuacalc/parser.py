@@ -9,7 +9,7 @@ import unicodedata
 
 import pdfplumber
 
-from geracordo.models import CaseData, Subdebito, TcuLancamento, parse_iso_date
+from pactuacalc.models import CaseData, Subdebito, TcuLancamento, parse_iso_date
 
 
 SECTION_PATTERNS = {
@@ -666,3 +666,4 @@ def parse_tcu_report(path: str | Path) -> CaseData:
         relatorios_anexados=[source_path],
         subdebitos=subdebitos,
     )
+

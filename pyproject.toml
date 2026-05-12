@@ -1,5 +1,5 @@
 [project]
-name = "geracordo"
+name = "pactuacalc"
 version = "0.1.0"
 description = "Aplicacao inicial para leitura de relatorios PROJEF Web e estruturacao de propostas de acordo."
 readme = "README.md"

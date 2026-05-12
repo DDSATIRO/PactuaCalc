@@ -1,4 +1,4 @@
-"""Verificacao remota de versao do Geracordo.
+"""Verificacao remota de versao do pactuacalc.
 
 Ao iniciar o app, consulta o arquivo version.json hospedado no GitHub
 para verificar se a versao local ainda e permitida. Se a versao local
@@ -83,3 +83,4 @@ def verificar_versao() -> tuple[bool, str, str]:
         pass
 
     return True, "", ""
+

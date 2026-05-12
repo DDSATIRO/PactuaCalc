@@ -5,9 +5,9 @@ from pathlib import Path
 from time import sleep
 import tkinter as tk
 
-from geracordo.formatting import format_decimal_br
-from geracordo.models import CaseData, TcuLancamento
-from geracordo.projefweb import (
+from pactuacalc.formatting import format_decimal_br
+from pactuacalc.models import CaseData, TcuLancamento
+from pactuacalc.projefweb import (
     _capture_pdf_from_existing_pages,
     _click_first_visible,
     pasta_preferencial_relatorios,
@@ -437,7 +437,8 @@ def atualizar_relatorio_tcu(case_data: CaseData) -> Path:
                 ) from exc
                 
         except Exception as e:
-            from geracordo.projefweb import _registrar_screenshot_erro
+            from pactuacalc.projefweb import _registrar_screenshot_erro
             _registrar_screenshot_erro(page, "erro_tcu", download_dir)
             browser.close()
             raise e
+

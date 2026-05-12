@@ -17,4 +17,4 @@ build/
 *.spec
 
 # Cache gerado automaticamente (nao deve ser versionado)
-geracordo/selic_history.json
+pactuacalc/selic_history.json

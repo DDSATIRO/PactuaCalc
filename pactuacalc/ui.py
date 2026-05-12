@@ -6,12 +6,12 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from geracordo.formatting import format_currency_br, format_decimal_br, parse_decimal_input
-from geracordo.models import CaseData, Subdebito, parse_iso_date
-from geracordo.parser import detect_report_type, parse_projef_report, parse_tcu_report
-from geracordo.projefweb import ProjefWebAutomationError, atualizar_relatorio_projef, competencia_esta_defasada
-from geracordo.proposals import MODALIDADES, create_proposal_pdf
-from geracordo.services import (
+from pactuacalc.formatting import format_currency_br, format_decimal_br, parse_decimal_input
+from pactuacalc.models import CaseData, Subdebito, parse_iso_date
+from pactuacalc.parser import detect_report_type, parse_projef_report, parse_tcu_report
+from pactuacalc.projefweb import ProjefWebAutomationError, atualizar_relatorio_projef, competencia_esta_defasada
+from pactuacalc.proposals import MODALIDADES, create_proposal_pdf
+from pactuacalc.services import (
     MergeConflict,
     consolidar_por_chave_arrecadatoria,
     distribuir_valor_bloqueado,
@@ -19,7 +19,7 @@ from geracordo.services import (
     replace_tcu_case_data,
     total_bloqueado_efetivo,
 )
-from geracordo.tcuweb import TcuAutomationError, atualizar_relatorio_tcu
+from pactuacalc.tcuweb import TcuAutomationError, atualizar_relatorio_tcu
 
 
 CASE_FIELDS = [
@@ -681,7 +681,7 @@ class MainWindow:
             
         if self.case_data.tipo_parcela == "FIXO (PREFIXADO)":
             try:
-                from geracordo.selic_api import update_selic_history
+                from pactuacalc.selic_api import update_selic_history
                 self.run_with_loading(
                     "Atualizando Taxas Selic",
                     "Buscando histórico atualizado de taxas Selic no Banco Central...",
@@ -690,7 +690,7 @@ class MainWindow:
             except Exception as e:
                 messagebox.showwarning("Erro na Selic", f"Nao foi possivel atualizar a base Selic. O sistema tentará usar a base local existente.\n\nDetalhes: {e}")
             
-        from geracordo.services import consolidar_por_chave_arrecadatoria
+        from pactuacalc.services import consolidar_por_chave_arrecadatoria
         consolidated = consolidar_por_chave_arrecadatoria(self.case_data.subdebitos)
         for item in consolidated:
             if not (item.ug or "").strip() or not (item.gru_cr or "").strip():
@@ -705,7 +705,7 @@ class MainWindow:
         if not selected_codes:
             return
             
-        from geracordo.proposals import build_proposal_scenarios
+        from pactuacalc.proposals import build_proposal_scenarios
         scenarios = build_proposal_scenarios(self.case_data, selected_codes=selected_codes)
         
         if not self.show_proposal_preview(scenarios):
@@ -768,7 +768,7 @@ class MainWindow:
         scroll.pack(side="right", fill="y")
         text.pack(side="top", fill="both", expand=True, pady=(0, 12))
         
-        from geracordo.formatting import format_currency_br, format_percent_br
+        from pactuacalc.formatting import format_currency_br, format_percent_br
         
         for sc in scenarios:
             if sc.parcelas == 1:
@@ -792,7 +792,7 @@ class MainWindow:
                 text.insert("end", f"  • Parcelamento: {sc.parcelas} parcelas mensais de {format_currency_br(sc.valor_parcela)}\n", "normal")
             
             if self.case_data.tipo_parcela == "FIXO (PREFIXADO)" and sc.parcelas > 1:
-                from geracordo.services import total_bloqueado_efetivo
+                from pactuacalc.services import total_bloqueado_efetivo
                 tot_bloq = total_bloqueado_efetivo(self.case_data.subdebitos)
                 val_prefixado = tot_bloq + sc.entrada_gru + (sc.valor_parcela * sc.parcelas)
                 text.insert("end", f"\n  ▶ VALOR FINAL: {format_currency_br(val_prefixado)} (com Parcela Pre-fixada)\n", "highlight")
@@ -1142,3 +1142,4 @@ def launch_app() -> None:
         style.theme_use("vista")
     MainWindow(root)
     root.mainloop()
+
