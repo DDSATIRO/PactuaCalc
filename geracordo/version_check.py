@@ -12,7 +12,7 @@ from __future__ import annotations
 APP_VERSION = "1.0.0"
 
 _VERSION_URL = (
-    "https://raw.githubusercontent.com/DDSATIRO/Geracordo/main/version.json"
+    "https://raw.githubusercontent.com/DDSATIRO/PactuaCalc/main/version.json"
 )
 
 
