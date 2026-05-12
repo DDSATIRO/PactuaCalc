@@ -6,7 +6,14 @@ from datetime import datetime, timedelta
 # Série 4390: Taxa de juros - Selic acumulada no mês (% a.m.)
 BCB_SELIC_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.4390/dados"
 DATA_INICIAL_PADRAO = "01/01/1995"
-FILE_PATH = os.path.join(os.path.dirname(__file__), "selic_history.json")
+
+# Salva o cache em AppData\Local\Geracordo — gravavel mesmo dentro de um .exe empacotado
+_APP_DATA_DIR = os.path.join(
+    os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+    "Geracordo",
+)
+os.makedirs(_APP_DATA_DIR, exist_ok=True)
+FILE_PATH = os.path.join(_APP_DATA_DIR, "selic_history.json")
 
 def load_selic_history():
     """Carrega o histórico local de taxas Selic. Retorna lista vazia se não existir."""
