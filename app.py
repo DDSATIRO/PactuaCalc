@@ -5,13 +5,20 @@ from geracordo.version_check import verificar_versao
 
 
 def main() -> None:
-    permitido, mensagem = verificar_versao()
+    permitido, mensagem_bloqueio, aviso_nova_versao = verificar_versao()
+
     if not permitido:
         root = tk.Tk()
         root.withdraw()
-        messagebox.showerror("Geracordo — Versao bloqueada", mensagem)
+        messagebox.showerror("Geracordo — Versao bloqueada", mensagem_bloqueio)
         root.destroy()
         return
+
+    if aviso_nova_versao:
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showinfo("Geracordo — Atualizacao disponivel", aviso_nova_versao)
+        root.destroy()
 
     from geracordo.ui import launch_app
     launch_app()
