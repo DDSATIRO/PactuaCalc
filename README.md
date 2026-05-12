@@ -5,15 +5,16 @@ Base inicial do app descrito no documento técnico consolidado do projeto Pactua
 ## Escopo Implementado
 
 - **Leitura de Relatórios PDF**: Extração e parsing inteligente via `pdfplumber` de relatórios do **PROJEF Web** e do **TCU**.
-- **Automação Web**: Integração com Selenium para automatização do fluxo de acesso aos relatórios.
+- **Automação Web**: Integração com Playwright (Microsoft Edge nativo) para automatização do fluxo de acesso aos relatórios.
 - **Motor de Propostas e PDF**: Geração automatizada de propostas de acordo em formato PDF, contemplando:
   - Cálculos de juros simples para parcelas pré-fixadas (histórico Selic via API do Banco Central).
   - Quadro comparativo e cálculo detalhado de descontos e opções de carência.
-  - Demonstrações de médias mensais e consolidações por modalidade (Curto/Médio/Longo prazo, etc.).
+  - Demonstrações de médias mensais e consolidações por modalidade.
 - **Subdébitos e Bloqueios Judiciais**:
   - Classificação rigorosa em valores `PRINCIPAL` e `HONORÁRIOS`.
   - Mecanismo de distribuição inteligente de saldo judicial bloqueado.
-- **Interface Gráfica (Desktop)**: Construída via `tkinter` para permitir edição de subdébitos, regras de aprovação e visualização prévia da proposta consolidada.
+- **Interface Gráfica (Desktop)**: Construída via `tkinter` com botão "Sobre" com licenças embutidas, campo de condições adicionais com sinalização visual e ordem de tabulação padronizada.
+- **Controle Remoto de Versão**: Sistema de kill switch e notificação de atualização via arquivo hospedado no GitHub.
 
 ## Como Executar
 
@@ -23,15 +24,30 @@ python app.py
 
 ## Estrutura do Projeto
 
-- `app.py`: Ponto de entrada da aplicação.
+- `app.py`: Ponto de entrada — inclui verificação remota de versão antes de abrir a UI.
 - `geracordo/models.py`: Entidades (CaseData, Subdebito), validações e persistência em formato JSON.
 - `geracordo/parser.py`: Engine de parsing baseada em âncoras textuais para PDFs do PROJEF e TCU.
 - `geracordo/proposals.py` / `proposal_render.py`: Geração e desenho dinâmico de propostas de acordo (PDF).
 - `geracordo/services.py`: Regras de negócio de distribuição de bloqueio e consolidação de débito.
 - `geracordo/selic_api.py`: Integração com API de séries temporais do Banco Central.
-- `geracordo/ui.py`: Interface de usuário.
+- `geracordo/version_check.py`: Sistema de controle remoto de versão via GitHub.
+- `geracordo/ui.py`: Interface de usuário (Tkinter).
+- `version.json`: Arquivo de controle de versão remoto (editável diretamente no GitHub).
 - `tests/`: Suíte de testes unitários que validam a lógica e o parsing.
 
+## Controle Remoto de Versão
+
+O sistema verifica automaticamente ao abrir se a versão instalada ainda é permitida, consultando o `version.json` hospedado no GitHub. Três camadas de controle independentes:
+
+| Campo | Efeito |
+|-------|--------|
+| `min_version` | Bloqueia versões abaixo do piso mínimo (muito antigas) |
+| `blocked_versions` | Bloqueia versões específicas com bugs, sem afetar as demais |
+| `latest_version` | Avisa gentilmente que há uma versão mais recente (sem bloquear) |
+
+Sem internet, o app abre normalmente (degradação graciosa).
+
 ## Observações
-- A automação Web exige a presença do ChromeDriver e permissões de rede.
+- A automação Web utiliza o Microsoft Edge nativo (Windows 10/11) via Playwright — sem download de navegador separado.
 - Os modelos de parcelamento foram ajustados para evitar a incidência de juros sobre juros nas propostas pré-fixadas (SELIC).
+- A automação possui timeouts robustos para redes lentas e só decrementa a competência de atualização se o ProjefWeb explicitamente rejeitar a data.
