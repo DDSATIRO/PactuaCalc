@@ -57,9 +57,18 @@ FIELD_LABELS = {
 class MainWindow:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("GeraAcordo")
+        self.root.title("PactuaCalc")
         self.root.geometry("1500x960")
         self.root.minsize(1360, 900)
+        # Icone da janela
+        try:
+            import sys
+            _base = getattr(sys, '_MEIPASS', None) or Path(__file__).parent.parent
+            _ico = Path(_base) / "PactuaCalc.ico"
+            if _ico.exists():
+                self.root.iconbitmap(str(_ico))
+        except Exception:
+            pass
         self.case_data = CaseData()
         self.selected_subdebito_indices: list[int] = []
 
@@ -96,20 +105,28 @@ class MainWindow:
         license_text = "Arquivo de licenças não encontrado."
         if license_path.exists():
             license_text = license_path.read_text(encoding="utf-8")
-            
+
         about_win = tk.Toplevel(self.root)
-        about_win.title("Sobre o Geracordo")
+        about_win.title("Sobre o PactuaCalc")
         about_win.geometry("600x450")
-        
+        try:
+            import sys
+            _base = getattr(sys, '_MEIPASS', None) or Path(__file__).parent.parent
+            _ico = Path(_base) / "PactuaCalc.ico"
+            if _ico.exists():
+                about_win.iconbitmap(str(_ico))
+        except Exception:
+            pass
+
         header = (
-            "Geracordo\n\n"
+            "PactuaCalc\n\n"
             "Copyright (c) 2026 ddsatiro\n"
             "Contato: ddsatiro@gmail.com\n\n"
             "Este software e de codigo aberto (Licenca MIT).\n"
             "Licencas de terceiros:\n"
             "--------------------------------------------------\n"
         )
-        
+
         txt = tk.Text(about_win, wrap="word", padx=10, pady=10)
         txt.pack(fill="both", expand=True)
         txt.insert("1.0", header + license_text)
