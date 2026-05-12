@@ -31,6 +31,11 @@ def verificar_versao() -> tuple[bool, str, str]:
     - permitido=False → app deve exibir a mensagem_bloqueio e encerrar.
     - aviso_nova_versao → texto informativo (nao bloqueante) se houver
       versao mais recente disponivel. Vazio se estiver em dia.
+
+    Regras aplicadas em ordem:
+      1. Se APP_VERSION < min_version          → bloqueado (muito antigo)
+      2. Se APP_VERSION em blocked_versions    → bloqueado (versao com bug)
+      3. Se APP_VERSION < latest_version       → aviso gentil (nao bloqueia)
     """
     try:
         import json
@@ -42,19 +47,27 @@ def verificar_versao() -> tuple[bool, str, str]:
 
         min_version = data.get("min_version", "0.0.0")
         latest_version = data.get("latest_version", "0.0.0")
+        blocked_versions = data.get("blocked_versions", [])
         mensagem = data.get("mensagem", "").strip()
 
-        # Bloqueio: versao abaixo do minimo permitido
+        # Regra 1: abaixo do piso minimo
         if _parse_version(APP_VERSION) < _parse_version(min_version):
-            if not mensagem:
-                mensagem = (
-                    f"Esta versao ({APP_VERSION}) esta desatualizada.\n"
-                    f"A versao minima permitida e {min_version}.\n\n"
-                    "Solicite a versao atualizada ao desenvolvedor."
-                )
-            return False, mensagem, ""
+            msg = mensagem or (
+                f"Esta versao ({APP_VERSION}) e muito antiga.\n"
+                f"A versao minima permitida e {min_version}.\n\n"
+                "Solicite a versao atualizada ao desenvolvedor."
+            )
+            return False, msg, ""
 
-        # Aviso gentil: versao funcional mas ha uma mais nova
+        # Regra 2: versao especifica com bug (lista negra cirurgica)
+        if APP_VERSION in blocked_versions:
+            msg = mensagem or (
+                f"A versao {APP_VERSION} foi desativada devido a um problema.\n\n"
+                "Solicite a versao atualizada ao desenvolvedor."
+            )
+            return False, msg, ""
+
+        # Regra 3: aviso gentil — ha versao mais nova, mas esta funciona
         aviso = ""
         if _parse_version(APP_VERSION) < _parse_version(latest_version):
             aviso = (
