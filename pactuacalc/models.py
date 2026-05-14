@@ -67,7 +67,7 @@ class Subdebito:
 
     def validate(self) -> list[str]:
         errors: list[str] = []
-        if self.tipo not in {"PRINCIPAL", "HONORÁRIOS"}:
+        if self.tipo not in {"PRINCIPAL", "HONORÁRIOS", "MULTA (exceto art. 523)"}:
             errors.append("Subdebito com tipo invalido.")
         if self.valor_atualizado < 0:
             errors.append("Valor atualizado do subdebito nao pode ser negativo.")

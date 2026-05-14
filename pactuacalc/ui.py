@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import fields
 from datetime import date
+import json
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -53,13 +54,19 @@ FIELD_LABELS = {
     "valor_bloqueado_geral": "Valor bloqueado geral",
 }
 
+FIELD_BG = "#fff8e6"
+TOP_FIELD_BG = "#ffe4e6"
+MISSING_BG = "#ffe4e6"
+BATCH_BG = "#dedbd2"
+
 
 class MainWindow:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("PactuaCalc")
-        self.root.geometry("1500x960")
-        self.root.minsize(1360, 900)
+        self.root.geometry("1280x780")
+        self.root.minsize(1080, 680)
+        self.root.configure(bg="#f4f6f8")
         # Icone da janela
         try:
             import sys
@@ -86,7 +93,17 @@ class MainWindow:
         self.total_geral_var = tk.StringVar(value="R$ 0,00")
         self.summary_description_var = tk.StringVar()
         self.selected_summary_key: tuple[str, str] | None = None
+        self.ug_codes: list[dict[str, str]] = []
+        self.gru_codes: list[dict[str, str]] = []
+        self.ug_by_code: dict[str, dict[str, str]] = {}
+        self.ug_display_to_code: dict[str, str] = {}
+        self.gru_display_to_code: dict[str, str] = {}
+        self.ug_comboboxes: list[ttk.Combobox] = []
+        self.gru_comboboxes: list[ttk.Combobox] = []
 
+        self.logo_image: tk.PhotoImage | None = None
+        self._load_revenue_codes()
+        self._configure_styles()
         self._build_layout()
         self.refresh_all()
 
@@ -132,69 +149,248 @@ class MainWindow:
         txt.insert("1.0", header + license_text)
         txt.configure(state="disabled")
 
+    def _asset_path(self, filename: str) -> Path:
+        try:
+            import sys
+            base = getattr(sys, "_MEIPASS", None) or Path(__file__).parent.parent
+        except Exception:
+            base = Path(__file__).parent.parent
+        return Path(base) / filename
+
+    def _load_revenue_codes(self) -> None:
+        path = self._asset_path("pactuacalc/codigos_arrecadacao.json")
+        if not path.exists():
+            path = Path(__file__).with_name("codigos_arrecadacao.json")
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = {"ugs": [], "grus": []}
+
+        self.ug_codes = list(payload.get("ugs", []))
+        self.gru_codes = list(payload.get("grus", []))
+        self.ug_by_code = {item["ug"]: item for item in self.ug_codes if item.get("ug")}
+        self.ug_display_to_code = {
+            self._ug_display(item): item["ug"] for item in self.ug_codes if item.get("ug")
+        }
+        self.gru_display_to_code = {
+            self._gru_display(item): item["codigo"] for item in self.gru_codes if item.get("codigo")
+        }
+
+    def _ug_display(self, item: dict[str, str]) -> str:
+        return f"{item.get('ug', '')}/{item.get('gestao', '')} - {item.get('descricao', '')}"
+
+    def _gru_display(self, item: dict[str, str]) -> str:
+        return f"{item.get('codigo', '')} - {item.get('descricao', '')}"
+
+    def _filter_code_values(self, values: list[str], query: str) -> list[str]:
+        terms = query.lower().replace("/", " ").replace("-", " ").split()
+        if not terms:
+            return values
+        return [value for value in values if all(term in value.lower() for term in terms)]
+
+    def _configure_styles(self) -> None:
+        style = ttk.Style(self.root)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+
+        base_bg = "#f4f6f8"
+        panel_bg = "#ffffff"
+        text = "#1f2937"
+        muted = "#5f6b7a"
+        primary = "#0f766e"
+        primary_hover = "#0d625c"
+
+        style.configure(".", font=("Segoe UI", 9))
+        style.configure("App.TFrame", background=base_bg)
+        style.configure("Panel.TFrame", background=panel_bg)
+        style.configure("Toolbar.TFrame", background="#e8f3f1")
+        style.configure("Header.TFrame", background="#e8f3f1")
+        style.configure("App.TLabel", background=base_bg, foreground=text)
+        style.configure("Panel.TLabel", background=panel_bg, foreground=text)
+        style.configure("Muted.TLabel", background=panel_bg, foreground=muted)
+        style.configure("Brand.TLabel", background="#e8f3f1", foreground="#0f172a", font=("Segoe UI", 17, "bold"))
+        style.configure("Subtitle.TLabel", background="#e8f3f1", foreground="#475569", font=("Segoe UI", 9))
+        style.configure("Logo.TLabel", background="#e8f3f1")
+        style.configure("Status.TLabel", background="#e8f3f1", foreground="#334155")
+        style.configure("TLabel", background=base_bg, foreground=text)
+        style.configure("TLabelframe", background=base_bg, bordercolor="#d7dee8", relief="solid")
+        style.configure("TLabelframe.Label", background=base_bg, foreground="#1f2937", font=("Segoe UI", 9, "bold"))
+        style.configure("TEntry", fieldbackground=FIELD_BG, bordercolor="#cbd5e1", lightcolor="#cbd5e1", darkcolor="#cbd5e1", padding=3)
+        style.configure("TCombobox", fieldbackground=FIELD_BG, background=FIELD_BG, bordercolor="#cbd5e1", arrowsize=14, padding=3)
+        style.configure("Pink.TCombobox", fieldbackground=TOP_FIELD_BG, background=TOP_FIELD_BG, bordercolor="#cbd5e1", arrowsize=14, padding=3)
+        style.configure("Treeview", rowheight=24, bordercolor="#d7dee8", fieldbackground="#ffffff", background="#ffffff", foreground=text)
+        style.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"), background="#edf2f7", foreground="#334155")
+        style.configure("TButton", padding=(10, 5))
+        style.configure("Accent.TButton", background=primary, foreground="#ffffff", bordercolor=primary)
+        style.map("Accent.TButton", background=[("active", primary_hover), ("pressed", primary_hover)])
+        style.configure("Success.TButton", background="#15803d", foreground="#ffffff", bordercolor="#15803d", font=("Segoe UI", 10, "bold"), padding=(12, 8))
+        style.map("Success.TButton", background=[("active", "#166534"), ("pressed", "#166534")])
+        style.configure("Soft.TButton", background="#fff7db", foreground="#493a12", bordercolor="#f1d98c")
+        style.map("Soft.TButton", background=[("active", "#ffefb3"), ("pressed", "#ffefb3")])
+
+    def _load_logo(self) -> tk.PhotoImage | None:
+        logo_path = self._asset_path("PactuaCalc.png")
+        if not logo_path.exists():
+            return None
+        try:
+            image = tk.PhotoImage(file=str(logo_path))
+            max_width = 136
+            max_height = 64
+            factor = max(
+                1,
+                int(max(image.width() / max_width, image.height() / max_height) + 0.999),
+            )
+            if factor > 1:
+                image = image.subsample(factor, factor)
+            return image
+        except tk.TclError:
+            return None
+
+    def _bind_mousewheel(self, widget: tk.Widget, canvas: tk.Canvas) -> None:
+        widget.bind_all("<MouseWheel>", lambda event: canvas.yview_scroll(int(-1 * (event.delta / 120)), "units"))
+
+    def _make_filter_combobox(
+        self,
+        parent: tk.Widget,
+        variable: tk.StringVar,
+        values: list[str],
+        display_to_code: dict[str, str],
+        width: int,
+        on_selected=None,
+    ) -> ttk.Combobox:
+        combo = ttk.Combobox(parent, textvariable=variable, values=values, width=width, state="normal")
+
+        def refresh_values(_event=None) -> None:
+            combo.configure(values=self._filter_code_values(values, variable.get()))
+
+        def apply_selection(_event=None) -> None:
+            selected = variable.get()
+            code = display_to_code.get(selected)
+            if code:
+                variable.set(code)
+            if on_selected:
+                on_selected()
+
+        combo.bind("<KeyRelease>", refresh_values)
+        combo.bind("<FocusIn>", refresh_values)
+        combo.bind("<<ComboboxSelected>>", lambda event: self.root.after_idle(apply_selection))
+        combo.bind("<Return>", apply_selection)
+        combo.bind("<FocusOut>", apply_selection)
+        return combo
+
+    def _sync_gestao_from_subdebito_ug(self) -> None:
+        ug = self.subdebito_vars["ug"].get().strip()
+        item = self.ug_by_code.get(ug)
+        if item:
+            self.subdebito_vars["gestao"].set(item.get("gestao", "00001") or "00001")
+
+    def _sync_gestao_from_batch_ug(self) -> None:
+        ug = self.batch_vars["ug"].get().strip()
+        item = self.ug_by_code.get(ug)
+        if item:
+            self.batch_vars["gestao"].set(item.get("gestao", "00001") or "00001")
+
+    def _normalize_ug_value(self, value: str) -> tuple[str, str]:
+        raw = value.strip()
+        code = self.ug_display_to_code.get(raw, raw.split("/", 1)[0].split(" - ", 1)[0].strip())
+        item = self.ug_by_code.get(code)
+        if item:
+            return code, item.get("gestao", "00001") or "00001"
+        return code, "00001"
+
+    def _normalize_gru_value(self, value: str) -> str:
+        raw = value.strip()
+        return self.gru_display_to_code.get(raw, raw.split(" - ", 1)[0].strip())
+
     def _build_layout(self) -> None:
-        toolbar = ttk.Frame(self.root, padding=12)
-        toolbar.pack(fill="x")
-
-        tk.Button(
-            toolbar,
-            text="Criar a partir de Relatorio TCU/PROJEF",
-            command=self.create_from_any_pdf,
-            bg="#fff1b8",
-            activebackground="#ffe58f",
-        ).pack(side="left", padx=(0, 8))
-        tk.Button(
-            toolbar,
-            text="Adicionar outro relatorio TCU/PROJEF",
-            command=self.add_other_report,
-            bg="#fff1b8",
-            activebackground="#ffe58f",
-        ).pack(side="left", padx=(0, 8))
-        tk.Button(
-            toolbar,
-            text="Abrir rascunho anterior",
-            command=self.load_json,
-            bg="#fff1b8",
-            activebackground="#ffe58f",
-        ).pack(side="left", padx=(0, 8))
-        ttk.Button(toolbar, text="Salvar Rascunho JSON", command=self.save_json).pack(
-            side="left", padx=(0, 8)
-        )
-        ttk.Button(toolbar, text="Sair", command=self.root.destroy).pack(side="right")
-        ttk.Button(toolbar, text="Sobre", command=self.show_about).pack(side="right", padx=(0, 8))
-
         self.status_var = tk.StringVar()
-        ttk.Label(toolbar, textvariable=self.status_var).pack(side="right", padx=(0, 12))
+        top = ttk.Frame(self.root, style="Header.TFrame", padding=(16, 12, 16, 10))
+        top.pack(fill="x")
+        top.columnconfigure(1, weight=1)
 
-        main = ttk.Frame(self.root)
-        main.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        self.logo_image = self._load_logo()
+        if self.logo_image:
+            ttk.Label(top, image=self.logo_image, style="Logo.TLabel").grid(row=0, column=0, rowspan=2, sticky="w", padx=(0, 14))
 
-        header_frame = ttk.Labelframe(main, text="Cabecalho do caso", padding=12)
+        ttk.Label(top, text="PactuaCalc", style="Brand.TLabel").grid(row=0, column=1, sticky="sw")
+        ttk.Label(
+            top,
+            text="Acordos, subdebitos e propostas em uma tela mais clara e compacta",
+            style="Subtitle.TLabel",
+        ).grid(row=1, column=1, sticky="nw", pady=(1, 0))
+
+        ttk.Button(top, text="Sobre", command=self.show_about).grid(row=0, column=2, rowspan=2, sticky="e", padx=(8, 0))
+        ttk.Button(top, text="Sair", command=self.root.destroy).grid(row=0, column=3, rowspan=2, sticky="e", padx=(8, 0))
+
+        toolbar = ttk.Frame(self.root, style="Toolbar.TFrame", padding=(16, 0, 16, 12))
+        toolbar.pack(fill="x")
+        toolbar.columnconfigure(4, weight=1)
+
+        ttk.Button(
+            toolbar,
+            text="Criar a partir de relatorio",
+            command=self.create_from_any_pdf,
+            style="Soft.TButton",
+        ).grid(row=0, column=0, padx=(0, 8), pady=(0, 4), sticky="w")
+        ttk.Button(
+            toolbar,
+            text="Adicionar relatorio",
+            command=self.add_other_report,
+            style="Soft.TButton",
+        ).grid(row=0, column=1, padx=(0, 8), pady=(0, 4), sticky="w")
+        ttk.Button(
+            toolbar,
+            text="Abrir Json",
+            command=self.load_json,
+        ).grid(row=0, column=2, padx=(0, 8), pady=(0, 4), sticky="w")
+        ttk.Button(toolbar, text="Salvar Json", command=self.save_json).grid(
+            row=0, column=3, padx=(0, 8), pady=(0, 4), sticky="w"
+        )
+        ttk.Label(toolbar, textvariable=self.status_var, style="Status.TLabel").grid(row=0, column=4, sticky="e", padx=(8, 0))
+
+        shell = ttk.Frame(self.root, style="App.TFrame")
+        shell.pack(fill="both", expand=True)
+        shell.rowconfigure(0, weight=1)
+        shell.columnconfigure(0, weight=1)
+
+        canvas = tk.Canvas(shell, bg="#f4f6f8", highlightthickness=0, borderwidth=0)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar = ttk.Scrollbar(shell, orient="vertical", command=canvas.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        main = ttk.Frame(canvas, style="App.TFrame", padding=(16, 14, 16, 16))
+        window_id = canvas.create_window((0, 0), window=main, anchor="nw")
+
+        def resize_canvas(event: tk.Event) -> None:
+            canvas.itemconfigure(window_id, width=event.width)
+
+        def update_scroll_region(event: tk.Event) -> None:
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        canvas.bind("<Configure>", resize_canvas)
+        main.bind("<Configure>", update_scroll_region)
+        self._bind_mousewheel(main, canvas)
+
+        header_frame = ttk.Labelframe(main, text="Cabecalho do caso", padding=(12, 10))
         header_frame.pack(fill="x", side="top")
         self._build_header(header_frame)
 
         center = ttk.Panedwindow(main, orient=tk.HORIZONTAL)
-        center.pack(fill="both", expand=True, side="top", pady=(12, 0))
+        center.pack(fill="both", expand=True, side="top", pady=(10, 0))
 
-        grid_frame = ttk.Labelframe(center, text="Subdebitos", padding=12)
+        grid_frame = ttk.Labelframe(center, text="Subdebitos", padding=(12, 10))
         center.add(grid_frame, weight=3)
         self._build_subdebito_grid(grid_frame)
 
-        edit_frame = ttk.Labelframe(center, text="Edicao do subdebito selecionado", padding=12)
+        edit_frame = ttk.Labelframe(center, text="Edicao do subdebito selecionado", padding=(12, 10))
         center.add(edit_frame, weight=2)
         self._build_subdebito_editor(edit_frame)
 
-        notes_frame = ttk.Labelframe(main, text="Condicoes adicionais", padding=12)
-        notes_frame.pack(fill="both", side="top", pady=(12, 0))
-        self.notes_text = tk.Text(notes_frame, height=8, wrap="word")
-        self.notes_text.pack(fill="both", expand=True)
-        self.notes_text.bind("<KeyRelease>", self._update_notes_bg)
-
     def _update_notes_bg(self, event=None) -> None:
-        if not self.notes_text.get("1.0", "end-1c").strip():
-            self.notes_text.configure(bg="#ffcccc")
-        else:
-            self.notes_text.configure(bg="white")
+        self.notes_text.configure(bg=TOP_FIELD_BG)
 
     def _build_header(self, parent: ttk.Labelframe) -> None:
         mandatory_fields = {
@@ -235,9 +431,20 @@ class MainWindow:
                     values=["VARIAVEL (POS-FIXADO)", "FIXO (PREFIXADO)"],
                     state="readonly",
                     width=31,
+                    style="Pink.TCombobox",
                 )
             else:
-                entry = tk.Entry(parent, textvariable=self.case_vars[field_name], width=34, relief="groove")
+                entry = tk.Entry(
+                    parent,
+                    textvariable=self.case_vars[field_name],
+                    width=28,
+                    relief="solid",
+                    bd=1,
+                    highlightthickness=1,
+                    highlightbackground="#cbd5e1",
+                    highlightcolor="#0f766e",
+                    bg=TOP_FIELD_BG,
+                )
             
             entry.grid(
                 row=row,
@@ -250,14 +457,15 @@ class MainWindow:
             
             if field_name == "competencia_atualizacao":
                 entry.configure(state="readonly")
+                entry.configure(readonlybackground=TOP_FIELD_BG)
             
             if field_name in mandatory_fields:
                 def on_change(*args, widget=entry, var=self.case_vars[field_name]):
                     if type(widget) is tk.Entry:
                         if not var.get().strip():
-                            widget.configure(bg="#ffcccc")
+                            widget.configure(bg=MISSING_BG)
                         else:
-                            widget.configure(bg="white")
+                            widget.configure(bg=TOP_FIELD_BG)
                 self.case_vars[field_name].trace_add("write", on_change)
                 on_change()
 
@@ -280,7 +488,7 @@ class MainWindow:
     def _build_subdebito_grid(self, parent: ttk.Labelframe) -> None:
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(0, weight=1)
-        self.tree = ttk.Treeview(parent, columns=SUBDEBIT_COLUMNS, show="headings", height=7, selectmode="extended")
+        self.tree = ttk.Treeview(parent, columns=SUBDEBIT_COLUMNS, show="headings", height=5, selectmode="extended")
         for col in SUBDEBIT_COLUMNS:
             self.tree.heading(col, text=col.replace("_", " ").title())
             anchor = "w" if col in {"tipo", "descricao"} else "center"
@@ -299,14 +507,37 @@ class MainWindow:
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.tree.configure(yscrollcommand=scrollbar.set)
 
-        batch_frame = ttk.Frame(parent, padding=(0, 10, 0, 0))
+        batch_frame = tk.Frame(parent, bg=BATCH_BG, padx=0, pady=10)
         batch_frame.grid(row=1, column=0, columnspan=2, sticky="ew")
-        ttk.Label(batch_frame, text="UG").grid(row=0, column=0, padx=4, pady=2, sticky="w")
-        ttk.Entry(batch_frame, textvariable=self.batch_vars["ug"], width=10).grid(row=0, column=1, padx=4, pady=2)
-        ttk.Label(batch_frame, text="Gestao").grid(row=0, column=2, padx=4, pady=2, sticky="w")
-        ttk.Entry(batch_frame, textvariable=self.batch_vars["gestao"], width=10).grid(row=0, column=3, padx=4, pady=2)
-        ttk.Label(batch_frame, text="GRU(CR)").grid(row=0, column=4, padx=4, pady=2, sticky="w")
-        ttk.Entry(batch_frame, textvariable=self.batch_vars["gru_cr"], width=12).grid(row=0, column=5, padx=4, pady=2)
+        batch_frame.columnconfigure(1, weight=3)
+        batch_frame.columnconfigure(5, weight=2)
+        ug_values = [self._ug_display(item) for item in self.ug_codes]
+        gru_values = [self._gru_display(item) for item in self.gru_codes]
+
+        tk.Label(batch_frame, text="UG", bg=BATCH_BG).grid(row=0, column=0, padx=4, pady=2, sticky="w")
+        batch_ug_combo = self._make_filter_combobox(
+            batch_frame,
+            self.batch_vars["ug"],
+            ug_values,
+            self.ug_display_to_code,
+            width=64,
+            on_selected=self._sync_gestao_from_batch_ug,
+        )
+        batch_ug_combo.grid(row=0, column=1, padx=4, pady=2, sticky="ew")
+        self.ug_comboboxes.append(batch_ug_combo)
+
+        tk.Label(batch_frame, text="Gestao", bg=BATCH_BG).grid(row=0, column=2, padx=4, pady=2, sticky="w")
+        tk.Label(batch_frame, textvariable=self.batch_vars["gestao"], bg=BATCH_BG).grid(row=0, column=3, padx=4, pady=2, sticky="w")
+        tk.Label(batch_frame, text="GRU(CR)", bg=BATCH_BG).grid(row=0, column=4, padx=4, pady=2, sticky="w")
+        batch_gru_combo = self._make_filter_combobox(
+            batch_frame,
+            self.batch_vars["gru_cr"],
+            gru_values,
+            self.gru_display_to_code,
+            width=24,
+        )
+        batch_gru_combo.grid(row=0, column=5, padx=4, pady=2, sticky="ew")
+        self.gru_comboboxes.append(batch_gru_combo)
         ttk.Button(batch_frame, text="Aplicar aos selecionados", command=self.apply_batch_codes).grid(
             row=0,
             column=6,
@@ -314,9 +545,10 @@ class MainWindow:
             pady=2,
         )
 
-        ttk.Label(
+        tk.Label(
             batch_frame,
-            text="Selecione um ou mais subdebitos na grade para preencher UG/Gestao e GRU(CR) de uma vez.",
+            text="Selecione os codigos UG/Gestao e GRU(CR), nas listas suspensas.",
+            bg=BATCH_BG,
         ).grid(row=1, column=0, columnspan=8, sticky="w", padx=4, pady=(4, 0))
 
         summary_frame = ttk.Labelframe(parent, text="Totais consolidados", padding=(10, 8))
@@ -326,7 +558,7 @@ class MainWindow:
             summary_frame,
             columns=("descricao", "ug_gestao", "gru_cr", "valor_bloqueado", "valor_total"),
             show="headings",
-            height=7,
+            height=5,
         )
         self.summary_tree.heading("descricao", text="Descricao")
         self.summary_tree.heading("ug_gestao", text="UG/Gestao")
@@ -346,16 +578,21 @@ class MainWindow:
         summary_scroll = ttk.Scrollbar(summary_frame, orient="vertical", command=self.summary_tree.yview)
         summary_scroll.grid(row=0, column=1, sticky="ns")
         self.summary_tree.configure(yscrollcommand=summary_scroll.set)
-        ttk.Label(summary_frame, text="Descricao Consolidada").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(
+            summary_frame,
+            text="Selecione, para alterar a Descricao Consolidada",
+            font=("Segoe UI", 9, "bold"),
+        ).grid(row=1, column=0, sticky="w", pady=(8, 0))
         summary_editor = ttk.Frame(summary_frame)
         summary_editor.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(4, 0))
-        summary_editor.columnconfigure(0, weight=1)
-        ttk.Entry(summary_editor, textvariable=self.summary_description_var).grid(row=0, column=0, sticky="ew")
+        summary_editor.columnconfigure(0, weight=0)
+        summary_editor.columnconfigure(1, weight=1)
+        ttk.Entry(summary_editor, textvariable=self.summary_description_var).grid(row=0, column=1, sticky="ew")
         ttk.Button(
             summary_editor,
-            text="Atualizar descricao consolidada",
+            text="Selecione o debito consolidado para alterar sua descricao",
             command=self.update_summary_description,
-        ).grid(row=0, column=1, padx=(8, 0))
+        ).grid(row=0, column=0, sticky="w", padx=(0, 8))
         total_label = tk.Label(
             summary_frame,
             textvariable=self.total_geral_var,
@@ -366,6 +603,8 @@ class MainWindow:
         total_label.grid(row=3, column=0, columnspan=2, sticky="e", pady=(8, 0))
 
     def _build_subdebito_editor(self, parent: ttk.Labelframe) -> None:
+        parent.columnconfigure(1, weight=1)
+        parent.rowconfigure(9, weight=1)
         editable_fields = [
             ("tipo", "Tipo"),
             ("descricao", "Descricao"),
@@ -376,68 +615,104 @@ class MainWindow:
             ("gestao", "Gestao"),
             ("gru_cr", "GRU(CR)"),
         ]
+        ug_values = [self._ug_display(item) for item in self.ug_codes]
+        gru_values = [self._gru_display(item) for item in self.gru_codes]
         for idx, (field_name, label) in enumerate(editable_fields):
-            ttk.Label(parent, text=label).grid(row=idx, column=0, sticky="w", padx=6, pady=4)
+            ttk.Label(parent, text=label).grid(row=idx, column=0, sticky="w", padx=4, pady=2)
             if field_name == "tipo":
                 cb = ttk.Combobox(
                     parent,
                     textvariable=self.subdebito_vars[field_name],
                     width=32,
                     state="readonly",
-                    values=("PRINCIPAL", "HONORÁRIOS"),
+                    values=("PRINCIPAL", "HONORÁRIOS", "MULTA (exceto art. 523)"),
                 )
-                cb.grid(row=idx, column=1, sticky="ew", padx=6, pady=4)
+                cb.grid(row=idx, column=1, sticky="ew", padx=4, pady=2)
+            elif field_name == "ug":
+                cb = self._make_filter_combobox(
+                    parent,
+                    self.subdebito_vars[field_name],
+                    ug_values,
+                    self.ug_display_to_code,
+                    width=42,
+                    on_selected=self._sync_gestao_from_subdebito_ug,
+                )
+                cb.grid(row=idx, column=1, sticky="ew", padx=4, pady=2)
+                self.ug_comboboxes.append(cb)
+            elif field_name == "gestao":
+                ttk.Label(parent, textvariable=self.subdebito_vars[field_name]).grid(
+                    row=idx,
+                    column=1,
+                    sticky="w",
+                    padx=4,
+                    pady=2,
+                )
+            elif field_name == "gru_cr":
+                cb = self._make_filter_combobox(
+                    parent,
+                    self.subdebito_vars[field_name],
+                    gru_values,
+                    self.gru_display_to_code,
+                    width=24,
+                )
+                cb.grid(row=idx, column=1, sticky="ew", padx=4, pady=2)
+                self.gru_comboboxes.append(cb)
             else:
-                ttk.Entry(parent, textvariable=self.subdebito_vars[field_name], width=34).grid(
+                entry_width = 18 if field_name in {"valor_atualizado", "multa_art_523", "valor_bloqueado"} else 26
+                tk.Entry(
+                    parent,
+                    textvariable=self.subdebito_vars[field_name],
+                    width=entry_width,
+                    bg=FIELD_BG,
+                    relief="solid",
+                    bd=1,
+                    highlightthickness=1,
+                    highlightbackground="#cbd5e1",
+                    highlightcolor="#0f766e",
+                ).grid(
                     row=idx,
                     column=1,
                     sticky="ew",
-                    padx=6,
-                    pady=4,
+                    padx=4,
+                    pady=2,
                 )
 
-        ttk.Button(parent, text="Atualizar subdebito", command=self.save_subdebito_edits).grid(
-            row=len(editable_fields),
-            column=0,
-            columnspan=2,
-            sticky="ew",
-            padx=6,
-            pady=(12, 4),
+        actions = ttk.Frame(parent)
+        actions.grid(row=len(editable_fields), column=0, columnspan=2, sticky="ew", pady=(6, 4))
+        for col in range(3):
+            actions.columnconfigure(col, weight=1)
+        ttk.Button(actions, text="Atualizar", command=self.save_subdebito_edits).grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        ttk.Button(actions, text="Adicionar", command=self.add_subdebito).grid(row=0, column=1, sticky="ew", padx=4)
+        ttk.Button(actions, text="Excluir", command=self.remove_subdebito).grid(row=0, column=2, sticky="ew", padx=(4, 0))
+
+        notes_frame = ttk.Labelframe(parent, text="Condicoes adicionais", padding=(8, 6))
+        notes_frame.grid(row=len(editable_fields) + 1, column=0, columnspan=2, sticky="nsew", pady=(4, 8))
+        notes_frame.columnconfigure(0, weight=1)
+        notes_frame.rowconfigure(0, weight=1)
+        self.notes_text = tk.Text(
+            notes_frame,
+            height=8,
+            wrap="word",
+            relief="solid",
+            bd=1,
+            highlightthickness=1,
+            highlightbackground="#cbd5e1",
+            highlightcolor="#0f766e",
+            bg=TOP_FIELD_BG,
+            font=("Segoe UI", 9),
+            padx=7,
+            pady=5,
         )
-        ttk.Button(parent, text="Adicionar subdebito", command=self.add_subdebito).grid(
-            row=len(editable_fields) + 1,
-            column=0,
-            columnspan=2,
-            sticky="ew",
-            padx=6,
-            pady=4,
-        )
-        ttk.Button(parent, text="Excluir subdebito", command=self.remove_subdebito).grid(
-            row=len(editable_fields) + 2,
-            column=0,
-            columnspan=2,
-            sticky="ew",
-            padx=6,
-            pady=4,
-        )
-        ttk.Label(
+        self.notes_text.grid(row=0, column=0, sticky="nsew")
+        self.notes_text.bind("<KeyRelease>", self._update_notes_bg)
+
+        ttk.Button(
             parent,
-            text="Edicoes individuais de valor bloqueado prevalecem sobre o uso do valor geral.",
-            wraplength=320,
-        ).grid(row=len(editable_fields) + 3, column=0, columnspan=2, sticky="w", padx=6, pady=12)
-        
-        tk.Button(
-            parent,
-            text="GERAR OPÇÕES DA PROPOSTA",
+            text="GERAR OPCOES DA PROPOSTA",
             command=self.generate_proposal,
-            bg="#d9f7be",
-            activebackground="#b7eb8f",
-            font=("Segoe UI", 12, "bold"),
-            height=2,
-            cursor="hand2",
-        ).grid(row=len(editable_fields) + 4, column=0, columnspan=2, sticky="ew", padx=12, pady=(12, 12))
-        
-        parent.columnconfigure(1, weight=1)
+            style="Success.TButton",
+        ).grid(row=len(editable_fields) + 2, column=0, columnspan=2, sticky="sew", padx=4, pady=(4, 0))
+
 
     def create_from_any_pdf(self) -> None:
         paths = filedialog.askopenfilenames(
@@ -981,9 +1256,8 @@ class MainWindow:
             item.valor_atualizado = parse_decimal_input(self.subdebito_vars["valor_atualizado"].get())
             item.multa_art_523 = parse_decimal_input(self.subdebito_vars["multa_art_523"].get())
             item.valor_bloqueado = parse_decimal_input(self.subdebito_vars["valor_bloqueado"].get())
-            item.ug = self.subdebito_vars["ug"].get().strip()
-            item.gestao = self.subdebito_vars["gestao"].get().strip() or "00001"
-            item.gru_cr = self.subdebito_vars["gru_cr"].get().strip()
+            item.ug, item.gestao = self._normalize_ug_value(self.subdebito_vars["ug"].get())
+            item.gru_cr = self._normalize_gru_value(self.subdebito_vars["gru_cr"].get())
         except ValueError:
             messagebox.showerror("Dados invalidos", "Valores numericos do subdebito sao invalidos.")
             return
@@ -1009,9 +1283,11 @@ class MainWindow:
             messagebox.showwarning("Selecao vazia", "Selecione um ou mais subdebitos na grade.")
             return
 
-        ug = self.batch_vars["ug"].get().strip()
-        gestao = self.batch_vars["gestao"].get().strip() or "00001"
-        gru_cr = self.batch_vars["gru_cr"].get().strip()
+        ug, gestao = self._normalize_ug_value(self.batch_vars["ug"].get())
+        gru_cr = self._normalize_gru_value(self.batch_vars["gru_cr"].get())
+        self.batch_vars["ug"].set(ug)
+        self.batch_vars["gestao"].set(gestao)
+        self.batch_vars["gru_cr"].set(gru_cr)
 
         for index in self.selected_subdebito_indices:
             item = self.case_data.subdebitos[index]
