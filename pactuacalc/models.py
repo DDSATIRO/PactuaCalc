@@ -7,6 +7,20 @@ import re
 from pathlib import Path
 
 
+DEFAULT_VISTA_FAIXAS = [
+    {"limite": 20000.0, "percentual": 50.0},
+    {"limite": 60000.0, "percentual": 35.0},
+    {"limite": 100000.0, "percentual": 30.0},
+    {"limite": None, "percentual": 25.0},
+]
+
+OLD_VISTA_FAIXAS = [
+    {"limite": 5000.0, "percentual": 20.0},
+    {"limite": 10000.0, "percentual": 25.0},
+    {"limite": 20000.0, "percentual": 30.0},
+    {"limite": None, "percentual": 35.0},
+]
+
 CNJ_PATTERN = re.compile(r"\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}")
 NUP_PATTERN = re.compile(r"\d{5}\.\d{6}/\d{4}-\d{2}")
 UG_GESTAO_PATTERN = re.compile(r"^\d{6}/\d{5}$")
@@ -33,13 +47,19 @@ class ProposalRules:
     aproveitar_bloqueio_como_entrada: bool = True
     calculo_vista: str = "percentual_unico"
     vista_faixas: list[dict[str, float | None]] = field(
-        default_factory=lambda: [
-            {"limite": 5000.0, "percentual": 20.0},
-            {"limite": 10000.0, "percentual": 25.0},
-            {"limite": 20000.0, "percentual": 30.0},
-            {"limite": None, "percentual": 35.0},
-        ]
+        default_factory=lambda: [dict(faixa) for faixa in DEFAULT_VISTA_FAIXAS]
     )
+
+    def __post_init__(self) -> None:
+        if self.vista_faixas == OLD_VISTA_FAIXAS:
+            self.vista_faixas = [dict(faixa) for faixa in DEFAULT_VISTA_FAIXAS]
+
+
+@dataclass
+class ProposalSelection:
+    entrada_percentual: float | None = None
+    desconto_percentual: float | None = None
+    parcelas: int | None = None
 
 
 @dataclass
@@ -116,6 +136,7 @@ class CaseData:
     condicoes_adicionais: str = ""
     data_limite_resposta: str = ""
     data_primeira_parcela: str = ""
+    data_primeira_parcela_com_entrada: str = ""
     valor_bloqueado_geral: float = 0.0
     origem_relatorio: str = ""
     sistema_origem: str = "projef"
@@ -125,6 +146,7 @@ class CaseData:
     lancamentos_tcu: list[TcuLancamento] = field(default_factory=list)
     relatorios_anexados: list[str] = field(default_factory=list)
     proposal_rules: ProposalRules = field(default_factory=ProposalRules)
+    propostas_selecionadas: dict[str, ProposalSelection] = field(default_factory=dict)
     subdebitos: list[Subdebito] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -139,6 +161,12 @@ class CaseData:
         lancamentos_tcu = [
             TcuLancamento(**item) for item in data.get("lancamentos_tcu", [])
         ]
+        propostas_payload = data.get("propostas_selecionadas", {}) or {}
+        propostas_selecionadas = {
+            codigo: ProposalSelection(**payload)
+            for codigo, payload in propostas_payload.items()
+            if isinstance(payload, dict)
+        }
         return cls(
             identificador_projef=data.get("identificador_projef", ""),
             processo=data.get("processo", ""),
@@ -153,6 +181,7 @@ class CaseData:
             condicoes_adicionais=data.get("condicoes_adicionais", ""),
             data_limite_resposta=data.get("data_limite_resposta", ""),
             data_primeira_parcela=data.get("data_primeira_parcela", ""),
+            data_primeira_parcela_com_entrada=data.get("data_primeira_parcela_com_entrada", ""),
             valor_bloqueado_geral=float(data.get("valor_bloqueado_geral", 0.0) or 0.0),
             origem_relatorio=data.get("origem_relatorio", ""),
             sistema_origem=data.get("sistema_origem", "projef"),
@@ -162,6 +191,7 @@ class CaseData:
             lancamentos_tcu=lancamentos_tcu,
             relatorios_anexados=list(data.get("relatorios_anexados", [])),
             proposal_rules=ProposalRules(**rules_data),
+            propostas_selecionadas=propostas_selecionadas,
             subdebitos=subdebitos,
         )
 

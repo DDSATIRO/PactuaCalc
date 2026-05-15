@@ -1,17 +1,25 @@
 from __future__ import annotations
 
 from dataclasses import fields
+import calendar
 from datetime import date
 import json
 from pathlib import Path
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
 
-from pactuacalc.formatting import format_currency_br, format_decimal_br, parse_decimal_input
-from pactuacalc.models import CaseData, Subdebito, parse_iso_date
+from pactuacalc.formatting import format_currency_br, format_decimal_br, format_percent_br, parse_decimal_input
+from pactuacalc.models import CaseData, ProposalSelection, Subdebito, parse_iso_date
 from pactuacalc.parser import detect_report_type, parse_projef_report, parse_tcu_report
 from pactuacalc.projefweb import ProjefWebAutomationError, atualizar_relatorio_projef, competencia_esta_defasada
-from pactuacalc.proposals import MODALIDADES, create_proposal_pdf
+from pactuacalc.proposals import (
+    MODALIDADES,
+    OPTIONAL_ENTRY_CODES,
+    create_proposal_pdf,
+    parcela_limites,
+    validate_proposal_selection,
+)
 from pactuacalc.services import (
     MergeConflict,
     consolidar_por_chave_arrecadatoria,
@@ -92,6 +100,7 @@ class MainWindow:
         }
         self.total_geral_var = tk.StringVar(value="R$ 0,00")
         self.summary_description_var = tk.StringVar()
+        self.subdebito_count_var = tk.StringVar()
         self.selected_summary_key: tuple[str, str] | None = None
         self.ug_codes: list[dict[str, str]] = []
         self.gru_codes: list[dict[str, str]] = []
@@ -148,6 +157,37 @@ class MainWindow:
         txt.pack(fill="both", expand=True)
         txt.insert("1.0", header + license_text)
         txt.configure(state="disabled")
+
+    def show_help(self) -> None:
+        help_path = self._asset_path("INSTRUCOES_DE_USO.md")
+        if not help_path.exists():
+            help_path = Path(__file__).parent.parent / "INSTRUCOES_DE_USO.md"
+        try:
+            help_text = help_path.read_text(encoding="utf-8")
+        except OSError:
+            help_text = "Arquivo de instrucoes de uso nao encontrado."
+
+        help_win = tk.Toplevel(self.root)
+        help_win.title("Ajuda - PactuaCalc")
+        help_win.geometry("860x680")
+        try:
+            import sys
+            _base = getattr(sys, '_MEIPASS', None) or Path(__file__).parent.parent
+            _ico = Path(_base) / "PactuaCalc.ico"
+            if _ico.exists():
+                help_win.iconbitmap(str(_ico))
+        except Exception:
+            pass
+
+        frame = ttk.Frame(help_win, padding=8)
+        frame.pack(fill="both", expand=True)
+        text = tk.Text(frame, wrap="word", padx=12, pady=12, font=("Segoe UI", 10))
+        scroll = ttk.Scrollbar(frame, orient="vertical", command=text.yview)
+        text.configure(yscrollcommand=scroll.set)
+        scroll.pack(side="right", fill="y")
+        text.pack(side="left", fill="both", expand=True)
+        text.insert("1.0", help_text)
+        text.configure(state="disabled")
 
     def _asset_path(self, filename: str) -> Path:
         try:
@@ -220,6 +260,7 @@ class MainWindow:
         style.configure("TEntry", fieldbackground=FIELD_BG, bordercolor="#cbd5e1", lightcolor="#cbd5e1", darkcolor="#cbd5e1", padding=3)
         style.configure("TCombobox", fieldbackground=FIELD_BG, background=FIELD_BG, bordercolor="#cbd5e1", arrowsize=14, padding=3)
         style.configure("Pink.TCombobox", fieldbackground=TOP_FIELD_BG, background=TOP_FIELD_BG, bordercolor="#cbd5e1", arrowsize=14, padding=3)
+        style.map("Pink.TCombobox", fieldbackground=[("readonly", TOP_FIELD_BG)], selectbackground=[("readonly", TOP_FIELD_BG)])
         style.configure("Treeview", rowheight=24, bordercolor="#d7dee8", fieldbackground="#ffffff", background="#ffffff", foreground=text)
         style.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"), background="#edf2f7", foreground="#334155")
         style.configure("TButton", padding=(10, 5))
@@ -236,8 +277,8 @@ class MainWindow:
             return None
         try:
             image = tk.PhotoImage(file=str(logo_path))
-            max_width = 136
-            max_height = 64
+            max_width = 380
+            max_height = 176
             factor = max(
                 1,
                 int(max(image.width() / max_width, image.height() / max_height) + 0.999),
@@ -306,7 +347,7 @@ class MainWindow:
 
     def _build_layout(self) -> None:
         self.status_var = tk.StringVar()
-        top = ttk.Frame(self.root, style="Header.TFrame", padding=(16, 12, 16, 10))
+        top = ttk.Frame(self.root, style="Header.TFrame", padding=(16, 4, 16, 4))
         top.pack(fill="x")
         top.columnconfigure(1, weight=1)
 
@@ -317,64 +358,41 @@ class MainWindow:
         ttk.Label(top, text="PactuaCalc", style="Brand.TLabel").grid(row=0, column=1, sticky="sw")
         ttk.Label(
             top,
-            text="Acordos, subdebitos e propostas em uma tela mais clara e compacta",
+            text="Gerador de Cálculos para acordos",
             style="Subtitle.TLabel",
         ).grid(row=1, column=1, sticky="nw", pady=(1, 0))
 
-        ttk.Button(top, text="Sobre", command=self.show_about).grid(row=0, column=2, rowspan=2, sticky="e", padx=(8, 0))
-        ttk.Button(top, text="Sair", command=self.root.destroy).grid(row=0, column=3, rowspan=2, sticky="e", padx=(8, 0))
-
-        toolbar = ttk.Frame(self.root, style="Toolbar.TFrame", padding=(16, 0, 16, 12))
-        toolbar.pack(fill="x")
-        toolbar.columnconfigure(4, weight=1)
-
+        buttons = ttk.Frame(top, style="Header.TFrame")
+        buttons.grid(row=0, column=2, rowspan=2, sticky="e", padx=(18, 0))
         ttk.Button(
-            toolbar,
+            buttons,
             text="Criar a partir de relatorio",
             command=self.create_from_any_pdf,
             style="Soft.TButton",
-        ).grid(row=0, column=0, padx=(0, 8), pady=(0, 4), sticky="w")
+        ).grid(row=0, column=0, padx=(0, 8), sticky="e")
         ttk.Button(
-            toolbar,
+            buttons,
             text="Adicionar relatorio",
             command=self.add_other_report,
             style="Soft.TButton",
-        ).grid(row=0, column=1, padx=(0, 8), pady=(0, 4), sticky="w")
+        ).grid(row=0, column=1, padx=(0, 8), sticky="e")
         ttk.Button(
-            toolbar,
+            buttons,
             text="Abrir Json",
             command=self.load_json,
-        ).grid(row=0, column=2, padx=(0, 8), pady=(0, 4), sticky="w")
-        ttk.Button(toolbar, text="Salvar Json", command=self.save_json).grid(
-            row=0, column=3, padx=(0, 8), pady=(0, 4), sticky="w"
+        ).grid(row=0, column=2, padx=(0, 8), sticky="e")
+        ttk.Button(buttons, text="Salvar Json", command=self.save_json).grid(
+            row=0, column=3, padx=(0, 8), sticky="e"
         )
-        ttk.Label(toolbar, textvariable=self.status_var, style="Status.TLabel").grid(row=0, column=4, sticky="e", padx=(8, 0))
+        ttk.Button(buttons, text="Sobre", command=self.show_about).grid(row=0, column=4, padx=(0, 8), sticky="e")
+        ttk.Button(buttons, text="Ajuda", command=self.show_help).grid(row=0, column=5, padx=(0, 8), sticky="e")
+        ttk.Button(buttons, text="Sair", command=self.root.destroy).grid(row=0, column=6, sticky="e")
+        ttk.Label(top, textvariable=self.status_var, style="Status.TLabel").grid(row=1, column=1, sticky="w", pady=(2, 0))
 
-        shell = ttk.Frame(self.root, style="App.TFrame")
-        shell.pack(fill="both", expand=True)
-        shell.rowconfigure(0, weight=1)
-        shell.columnconfigure(0, weight=1)
+        main = ttk.Frame(self.root, style="App.TFrame", padding=(16, 6, 16, 16))
+        main.pack(fill="both", expand=True)
 
-        canvas = tk.Canvas(shell, bg="#f4f6f8", highlightthickness=0, borderwidth=0)
-        canvas.grid(row=0, column=0, sticky="nsew")
-        scrollbar = ttk.Scrollbar(shell, orient="vertical", command=canvas.yview)
-        scrollbar.grid(row=0, column=1, sticky="ns")
-        canvas.configure(yscrollcommand=scrollbar.set)
-
-        main = ttk.Frame(canvas, style="App.TFrame", padding=(16, 14, 16, 16))
-        window_id = canvas.create_window((0, 0), window=main, anchor="nw")
-
-        def resize_canvas(event: tk.Event) -> None:
-            canvas.itemconfigure(window_id, width=event.width)
-
-        def update_scroll_region(event: tk.Event) -> None:
-            canvas.configure(scrollregion=canvas.bbox("all"))
-
-        canvas.bind("<Configure>", resize_canvas)
-        main.bind("<Configure>", update_scroll_region)
-        self._bind_mousewheel(main, canvas)
-
-        header_frame = ttk.Labelframe(main, text="Cabecalho do caso", padding=(12, 10))
+        header_frame = ttk.Labelframe(main, text="Dados Gerais", padding=(12, 10))
         header_frame.pack(fill="x", side="top")
         self._build_header(header_frame)
 
@@ -391,6 +409,18 @@ class MainWindow:
 
     def _update_notes_bg(self, event=None) -> None:
         self.notes_text.configure(bg=TOP_FIELD_BG)
+
+    def _default_first_installment_after_entry(self) -> str:
+        data_entrada = parse_iso_date(self.case_data.data_primeira_parcela)
+        if not data_entrada:
+            return ""
+        month = data_entrada.month + 1
+        year = data_entrada.year
+        if month > 12:
+            month = 1
+            year += 1
+        last_day = calendar.monthrange(year, month)[1]
+        return f"{last_day:02d}/{month:02d}/{year}"
 
     def _build_header(self, parent: ttk.Labelframe) -> None:
         mandatory_fields = {
@@ -488,7 +518,7 @@ class MainWindow:
     def _build_subdebito_grid(self, parent: ttk.Labelframe) -> None:
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(0, weight=1)
-        self.tree = ttk.Treeview(parent, columns=SUBDEBIT_COLUMNS, show="headings", height=5, selectmode="extended")
+        self.tree = ttk.Treeview(parent, columns=SUBDEBIT_COLUMNS, show="headings", height=7, selectmode="extended")
         for col in SUBDEBIT_COLUMNS:
             self.tree.heading(col, text=col.replace("_", " ").title())
             anchor = "w" if col in {"tipo", "descricao"} else "center"
@@ -506,9 +536,12 @@ class MainWindow:
         scrollbar = ttk.Scrollbar(parent, orient="vertical", command=self.tree.yview)
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.tree.configure(yscrollcommand=scrollbar.set)
+        ttk.Label(parent, textvariable=self.subdebito_count_var, style="Muted.TLabel").grid(
+            row=1, column=0, columnspan=2, sticky="w", padx=2, pady=(3, 0)
+        )
 
         batch_frame = tk.Frame(parent, bg=BATCH_BG, padx=0, pady=10)
-        batch_frame.grid(row=1, column=0, columnspan=2, sticky="ew")
+        batch_frame.grid(row=2, column=0, columnspan=2, sticky="ew")
         batch_frame.columnconfigure(1, weight=3)
         batch_frame.columnconfigure(5, weight=2)
         ug_values = [self._ug_display(item) for item in self.ug_codes]
@@ -551,8 +584,8 @@ class MainWindow:
             bg=BATCH_BG,
         ).grid(row=1, column=0, columnspan=8, sticky="w", padx=4, pady=(4, 0))
 
-        summary_frame = ttk.Labelframe(parent, text="Totais consolidados", padding=(10, 8))
-        summary_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        summary_frame = ttk.Labelframe(parent, text="Débitos consolidados", padding=(10, 8))
+        summary_frame.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         summary_frame.columnconfigure(0, weight=1)
         self.summary_tree = ttk.Treeview(
             summary_frame,
@@ -979,9 +1012,21 @@ class MainWindow:
         selected_codes = self.collect_proposal_generation_options()
         if not selected_codes:
             return
-            
+
+        if "2" in selected_codes and not self.collect_vista_discount_mode():
+            return
+             
         from pactuacalc.proposals import build_proposal_scenarios
-        scenarios = build_proposal_scenarios(self.case_data, selected_codes=selected_codes)
+        base_scenarios = build_proposal_scenarios(self.case_data, selected_codes=selected_codes)
+        proposal_selections = self.collect_proposal_adjustments(base_scenarios)
+        if proposal_selections is None:
+            return
+        self.case_data.propostas_selecionadas = proposal_selections
+        scenarios = build_proposal_scenarios(
+            self.case_data,
+            selected_codes=selected_codes,
+            proposal_selections=proposal_selections,
+        )
         
         if not self.show_proposal_preview(scenarios):
             return
@@ -1002,7 +1047,7 @@ class MainWindow:
         )
         if not path:
             return
-        pdf_path = create_proposal_pdf(self.case_data, path, selected_codes=selected_codes)
+        pdf_path = create_proposal_pdf(self.case_data, path, selected_codes=selected_codes, scenarios=scenarios)
         
         import os
         try:
@@ -1019,6 +1064,471 @@ class MainWindow:
                 f"e bloqueio efetivo de {format_currency_br(total)}."
             ),
         )
+
+    def collect_proposal_adjustments(self, scenarios: list) -> dict[str, ProposalSelection] | None:
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Ajustar propostas selecionadas")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        width = 1120
+        height = 460
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() - width) // 2
+        y = (dialog.winfo_screenheight() - height) // 2
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        dialog.resizable(True, True)
+        dialog_bg = dialog.cget("bg")
+
+        main = tk.Frame(dialog, bg=dialog_bg, padx=12, pady=12)
+        main.pack(fill="both", expand=True)
+
+        tk.Label(
+            main,
+            text=(
+                "Ajuste somente se necessario. Entrada so pode aumentar, desconto so pode diminuir "
+                "e parcelas so podem ser reduzidas dentro da faixa da proposta."
+            ),
+            wraplength=920,
+            bg=dialog_bg,
+            anchor="w",
+            justify="left",
+        ).pack(anchor="w", pady=(0, 10))
+
+        tk.Label(
+            main,
+            text=f"{len(scenarios)} proposta(s) selecionada(s) para ajuste.",
+            bg=dialog_bg,
+            anchor="w",
+        ).pack(anchor="w", pady=(0, 6))
+
+        table = tk.Frame(main, bg=dialog_bg)
+        table.pack(fill="x", expand=False)
+        table.columnconfigure(0, minsize=240)
+        for col in range(1, 8):
+            table.columnconfigure(col, minsize=105)
+        headers = (
+            "Proposta",
+            "Entrada padrao",
+            "Entrada final (%)",
+            "Desconto padrao",
+            "Desconto final (%)",
+            "Parcelas padrao",
+            "Parcelas finais",
+            "Faixa",
+        )
+        for col, header in enumerate(headers):
+            tk.Label(
+                table,
+                text=header,
+                font=("Segoe UI", 9, "bold"),
+                bg=dialog_bg,
+                anchor="w",
+            ).grid(row=0, column=col, sticky="w", padx=4, pady=3)
+
+        vars_by_code: dict[str, dict[str, tk.StringVar]] = {}
+        scenario_by_code = {scenario.codigo: scenario for scenario in scenarios}
+        entries_by_code: dict[str, dict[str, tk.Entry]] = {}
+        normal_font = tkfont.Font(family="Segoe UI", size=9)
+        changed_font = tkfont.Font(family="Segoe UI", size=9, weight="bold")
+        default_data_primeira_com_entrada = self._default_first_installment_after_entry()
+        data_primeira_com_entrada_var = tk.StringVar(
+            value=self.case_data.data_primeira_parcela_com_entrada or default_data_primeira_com_entrada
+        )
+        data_primeira_com_entrada_entry: tk.Entry | None = None
+
+        def _is_partial_decimal(value: str) -> bool:
+            return value == "" or all(char.isdigit() or char in ",." for char in value)
+
+        def make_decimal_validator(min_value: float, max_value: float | None = None):
+            def validate(value: str) -> bool:
+                if not _is_partial_decimal(value):
+                    return False
+                if value in {"", ",", "."}:
+                    return True
+                try:
+                    parsed = parse_decimal_input(value)
+                except ValueError:
+                    return False
+                if parsed < min_value:
+                    digits = "".join(char for char in value if char.isdigit())
+                    min_digits = str(int(min_value)) if min_value >= 1 else ""
+                    return bool(min_digits) and len(digits) < len(min_digits)
+                if max_value is not None and parsed > max_value:
+                    return False
+                return True
+            return dialog.register(validate)
+
+        def make_int_validator(min_value: int, max_value: int):
+            def validate(value: str) -> bool:
+                if value == "":
+                    return True
+                if not value.isdigit():
+                    return False
+                parsed = int(value)
+                if parsed < min_value and len(value) < len(str(min_value)):
+                    return True
+                return min_value <= parsed <= max_value
+            return dialog.register(validate)
+
+        def validate_first_installment_date(value: str) -> bool:
+            if value == "":
+                return True
+            if not all(char.isdigit() or char == "/" for char in value) or len(value) > 10:
+                return False
+            parsed = parse_iso_date(value)
+            default_date = parse_iso_date(default_data_primeira_com_entrada)
+            if parsed and default_date:
+                return parsed <= default_date
+            return True
+
+        date_validator = dialog.register(validate_first_installment_date)
+
+        for row, scenario in enumerate(scenarios, start=1):
+            saved = self.case_data.propostas_selecionadas.get(scenario.codigo)
+            entrada_value = scenario.entrada_minima_percentual
+            desconto_value = scenario.desconto_percentual
+            parcelas_value = scenario.parcelas
+            if saved:
+                if saved.entrada_percentual is not None:
+                    entrada_value = saved.entrada_percentual
+                if saved.desconto_percentual is not None:
+                    desconto_value = saved.desconto_percentual
+                if saved.parcelas is not None:
+                    parcelas_value = saved.parcelas
+
+            entrada_var = tk.StringVar(value=format_decimal_br(entrada_value))
+            desconto_var = tk.StringVar(value=format_decimal_br(desconto_value))
+            parcelas_var = tk.StringVar(value=str(parcelas_value))
+            vars_by_code[scenario.codigo] = {
+                "entrada": entrada_var,
+                "desconto": desconto_var,
+                "parcelas": parcelas_var,
+            }
+
+            min_parcelas, max_parcelas = parcela_limites(scenario.codigo)
+            if scenario.codigo == "2":
+                proposta_text = f"{scenario.codigo} - {scenario.modalidade} (Parcela Única)"
+            else:
+                proposta_text = f"{scenario.codigo} - {scenario.modalidade} (Até {scenario.parcelas} Parc.)"
+            proposta_label = tk.Label(
+                table,
+                text=proposta_text,
+                anchor="w",
+                width=30,
+                bg=dialog_bg,
+            )
+            proposta_label.grid(row=row, column=0, sticky="ew", padx=4, pady=3)
+            tk.Label(
+                table,
+                text=format_percent_br(scenario.entrada_minima_percentual),
+                bg=dialog_bg,
+                anchor="e",
+            ).grid(row=row, column=1, sticky="e", padx=4, pady=3)
+            entrada_minima = scenario.entrada_minima_percentual if scenario.codigo not in OPTIONAL_ENTRY_CODES else 0.0
+            entrada_entry = tk.Entry(
+                table,
+                textvariable=entrada_var,
+                width=12,
+                bg=FIELD_BG,
+                relief="solid",
+                bd=1,
+                font=normal_font,
+                validate="key",
+                validatecommand=(make_decimal_validator(entrada_minima), "%P"),
+            )
+            entrada_entry.grid(row=row, column=2, sticky="ew", padx=4, pady=3)
+            if scenario.codigo in OPTIONAL_ENTRY_CODES:
+                tk.Label(table, text="*", fg="#b91c1c", bg=dialog_bg, font=("Segoe UI", 10, "bold")).grid(
+                    row=row, column=2, sticky="e", padx=(0, 1), pady=3
+                )
+            elif scenario.entrada_minima_percentual <= 0:
+                entrada_entry.configure(state="disabled", disabledbackground="#e5e7eb")
+
+            tk.Label(
+                table,
+                text=format_percent_br(scenario.desconto_percentual),
+                bg=dialog_bg,
+                anchor="e",
+            ).grid(row=row, column=3, sticky="e", padx=4, pady=3)
+            desconto_entry = tk.Entry(
+                table,
+                textvariable=desconto_var,
+                width=12,
+                bg=FIELD_BG,
+                relief="solid",
+                bd=1,
+                font=normal_font,
+                validate="key",
+                validatecommand=(make_decimal_validator(0.0, scenario.desconto_percentual), "%P"),
+            )
+            desconto_entry.grid(row=row, column=4, sticky="ew", padx=4, pady=3)
+            if scenario.desconto_percentual <= 0:
+                desconto_entry.configure(state="disabled", disabledbackground="#e5e7eb")
+
+            tk.Label(table, text=str(scenario.parcelas), bg=dialog_bg, anchor="e").grid(row=row, column=5, sticky="e", padx=4, pady=3)
+            parcelas_entry = tk.Entry(
+                table,
+                textvariable=parcelas_var,
+                width=10,
+                bg=FIELD_BG,
+                relief="solid",
+                bd=1,
+                font=normal_font,
+                validate="key",
+                validatecommand=(make_int_validator(min_parcelas, scenario.parcelas), "%P"),
+            )
+            parcelas_entry.grid(row=row, column=6, sticky="ew", padx=4, pady=3)
+            if scenario.parcelas <= 1:
+                parcelas_entry.configure(state="disabled", disabledbackground="#e5e7eb")
+            tk.Label(table, text=f"{min_parcelas} a {max_parcelas}", bg=dialog_bg, anchor="w").grid(row=row, column=7, sticky="w", padx=4, pady=3)
+            entries_by_code[scenario.codigo] = {
+                "entrada": entrada_entry,
+                "desconto": desconto_entry,
+                "parcelas": parcelas_entry,
+            }
+
+        tk.Label(
+            main,
+            text="*A entrada nessas opções não geram desconto.",
+            fg="#b91c1c",
+            bg=dialog_bg,
+            anchor="w",
+        ).pack(anchor="w", pady=(6, 0))
+
+        date_frame = tk.Frame(main, bg=dialog_bg)
+        date_frame.pack(fill="x", pady=(18, 8))
+        data_entrada_label = self.case_data.data_primeira_parcela or "-"
+        tk.Label(
+            date_frame,
+            text="Nas opções com Entrada (prevista para ",
+            bg=dialog_bg,
+            anchor="w",
+        ).pack(side="left")
+        tk.Label(
+            date_frame,
+            text=data_entrada_label,
+            bg=dialog_bg,
+            anchor="w",
+            font=("Segoe UI", 9, "bold"),
+        ).pack(side="left")
+        tk.Label(
+            date_frame,
+            text="), a primeira parcela terá vencimento em:",
+            bg=dialog_bg,
+            anchor="w",
+        ).pack(side="left", padx=(0, 8))
+        data_primeira_com_entrada_entry = tk.Entry(
+            date_frame,
+            textvariable=data_primeira_com_entrada_var,
+            width=12,
+            bg=FIELD_BG,
+            relief="solid",
+            bd=1,
+            font=normal_font,
+            validate="key",
+            validatecommand=(date_validator, "%P"),
+        )
+        data_primeira_com_entrada_entry.pack(side="left")
+
+        result: dict[str, dict[str, ProposalSelection] | None] = {"selections": None}
+
+        def apply_change_style(entry: tk.Entry, changed: bool) -> None:
+            if str(entry.cget("state")) == "disabled":
+                return
+            entry.configure(fg="#b91c1c" if changed else "#111827", font=changed_font if changed else normal_font)
+
+        def update_change_styles(*_args) -> None:
+            for code, values in vars_by_code.items():
+                scenario = scenario_by_code[code]
+                entries = entries_by_code[code]
+                try:
+                    entrada_editavel = scenario.entrada_minima_percentual > 0 or scenario.codigo in OPTIONAL_ENTRY_CODES
+                    entrada = parse_decimal_input(values["entrada"].get()) if entrada_editavel else scenario.entrada_minima_percentual
+                except ValueError:
+                    entrada = None
+                try:
+                    desconto = parse_decimal_input(values["desconto"].get()) if scenario.desconto_percentual > 0 else scenario.desconto_percentual
+                except ValueError:
+                    desconto = None
+                try:
+                    parcelas = int(values["parcelas"].get()) if scenario.parcelas > 1 else scenario.parcelas
+                except ValueError:
+                    parcelas = None
+
+                apply_change_style(entries["entrada"], entrada is not None and abs(entrada - scenario.entrada_minima_percentual) > 0.0001)
+                apply_change_style(entries["desconto"], desconto is not None and abs(desconto - scenario.desconto_percentual) > 0.0001)
+                apply_change_style(entries["parcelas"], parcelas is not None and parcelas != scenario.parcelas)
+            if data_primeira_com_entrada_entry is not None:
+                apply_change_style(
+                    data_primeira_com_entrada_entry,
+                    data_primeira_com_entrada_var.get().strip() != default_data_primeira_com_entrada,
+                )
+
+        for values in vars_by_code.values():
+            for var in values.values():
+                var.trace_add("write", update_change_styles)
+        data_primeira_com_entrada_var.trace_add("write", update_change_styles)
+        update_change_styles()
+
+        def reset_to_defaults() -> None:
+            for code, values in vars_by_code.items():
+                scenario = scenario_by_code[code]
+                values["entrada"].set(format_decimal_br(scenario.entrada_minima_percentual))
+                values["desconto"].set(format_decimal_br(scenario.desconto_percentual))
+                values["parcelas"].set(str(scenario.parcelas))
+            data_primeira_com_entrada_var.set(default_data_primeira_com_entrada)
+            update_change_styles()
+
+        def confirm() -> None:
+            selections: dict[str, ProposalSelection] = {}
+            errors: list[str] = []
+            for code, values in vars_by_code.items():
+                scenario = scenario_by_code[code]
+                try:
+                    entrada_editavel = scenario.entrada_minima_percentual > 0 or scenario.codigo in OPTIONAL_ENTRY_CODES
+                    entrada = parse_decimal_input(values["entrada"].get()) if entrada_editavel else 0.0
+                    desconto = parse_decimal_input(values["desconto"].get()) if scenario.desconto_percentual > 0 else 0.0
+                    parcelas = int(values["parcelas"].get()) if scenario.parcelas > 1 else scenario.parcelas
+                except ValueError:
+                    errors.append(f"Valores invalidos na proposta {code}.")
+                    continue
+
+                selection = ProposalSelection(
+                    entrada_percentual=entrada,
+                    desconto_percentual=desconto,
+                    parcelas=parcelas,
+                )
+                errors.extend(validate_proposal_selection(scenario, selection))
+                changed = (
+                    abs(entrada - scenario.entrada_minima_percentual) > 0.0001
+                    or abs(desconto - scenario.desconto_percentual) > 0.0001
+                    or parcelas != scenario.parcelas
+                )
+                if changed:
+                    selections[code] = selection
+
+            if errors:
+                messagebox.showwarning("Ajustes invalidos", "\n".join(errors), parent=dialog)
+                return
+            data_primeira_com_entrada = data_primeira_com_entrada_var.get().strip()
+            if data_primeira_com_entrada and not parse_iso_date(data_primeira_com_entrada):
+                messagebox.showwarning(
+                    "Data invalida",
+                    "Informe a data da primeira parcela das opcoes com entrada no formato dd/mm/aaaa.",
+                    parent=dialog,
+                )
+                return
+            data_informada = parse_iso_date(data_primeira_com_entrada) if data_primeira_com_entrada else None
+            data_limite_padrao = parse_iso_date(default_data_primeira_com_entrada)
+            if data_informada and data_limite_padrao and data_informada > data_limite_padrao:
+                messagebox.showwarning(
+                    "Data invalida",
+                    (
+                        "A data da primeira parcela das opcoes com entrada so pode ser antecipada.\n\n"
+                        f"Informe uma data igual ou anterior a {default_data_primeira_com_entrada}."
+                    ),
+                    parent=dialog,
+                )
+                return
+            self.case_data.data_primeira_parcela_com_entrada = data_primeira_com_entrada
+            result["selections"] = selections
+            dialog.destroy()
+
+        buttons = ttk.Frame(main)
+        buttons.pack(fill="x", pady=(10, 0))
+        ttk.Button(buttons, text="Voltar", command=dialog.destroy).pack(side="left")
+        ttk.Button(
+            buttons,
+            text="Resetar alteracoes (voltar ao padrao geral)",
+            command=reset_to_defaults,
+        ).pack(side="left", padx=(10, 0))
+        ttk.Button(buttons, text="Avancar para resumo", command=confirm).pack(side="right")
+
+        self.root.wait_window(dialog)
+        return result["selections"]
+
+    def collect_vista_discount_mode(self) -> bool:
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Desconto da opcao a vista")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+
+        dialog.update_idletasks()
+        width = 520
+        height = 250
+        x = (dialog.winfo_screenwidth() - width) // 2
+        y = (dialog.winfo_screenheight() - height) // 2
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        dialog_bg = dialog.cget("bg")
+
+        mode_var = tk.StringVar(value=self.case_data.proposal_rules.calculo_vista or "percentual_unico")
+        if mode_var.get() not in {"percentual_unico", "progressivo"}:
+            mode_var.set("percentual_unico")
+        result = {"confirmed": False}
+
+        tk.Label(
+            dialog,
+            text="Como deve ser calculado o desconto da proposta 2 (pagamento a vista)?",
+            bg=dialog_bg,
+            anchor="w",
+            justify="left",
+            font=("Segoe UI", 9, "bold"),
+        ).pack(anchor="w", padx=14, pady=(14, 8))
+
+        tk.Radiobutton(
+            dialog,
+            text="Percentual unico por faixa (padrao)",
+            variable=mode_var,
+            value="percentual_unico",
+            bg=dialog_bg,
+            activebackground=dialog_bg,
+            selectcolor=dialog_bg,
+            anchor="w",
+        ).pack(anchor="w", padx=18, pady=3)
+
+        tk.Radiobutton(
+            dialog,
+            text="Faixa progressiva (excepcional)",
+            variable=mode_var,
+            value="progressivo",
+            bg=dialog_bg,
+            activebackground=dialog_bg,
+            selectcolor=dialog_bg,
+            anchor="w",
+        ).pack(anchor="w", padx=18, pady=3)
+
+        tk.Label(
+            dialog,
+            text=(
+                "A faixa e definida sem honorarios/encargos. O percentual encontrado "
+                "e aplicado sobre a base geral da opcao a vista."
+            ),
+            wraplength=480,
+            bg=dialog_bg,
+            anchor="w",
+            justify="left",
+        ).pack(anchor="w", padx=14, pady=(10, 0))
+
+        def confirm() -> None:
+            if mode_var.get() == "progressivo":
+                if not messagebox.askokcancel(
+                    "Calculo progressivo",
+                    "Esta opcao e excepcional. Verifique se e possivel concede-lo, antes de prosseguir.",
+                    parent=dialog,
+                ):
+                    return
+            self.case_data.proposal_rules.calculo_vista = mode_var.get()
+            result["confirmed"] = True
+            dialog.destroy()
+
+        buttons = ttk.Frame(dialog)
+        buttons.pack(fill="x", padx=14, pady=14)
+        ttk.Button(buttons, text="Voltar", command=dialog.destroy).pack(side="left")
+        ttk.Button(buttons, text="Confirmar", command=confirm).pack(side="right")
+
+        self.root.wait_window(dialog)
+        return result["confirmed"]
 
     def show_proposal_preview(self, scenarios: list) -> bool:
         dialog = tk.Toplevel(self.root)
@@ -1122,20 +1632,28 @@ class MainWindow:
         x = (dialog.winfo_screenwidth() - width) // 2
         y = (dialog.winfo_screenheight() - height) // 2
         dialog.geometry(f"{width}x{height}+{x}+{y}")
+        dialog_bg = dialog.cget("bg")
 
-        ttk.Label(
+        tk.Label(
             dialog,
             text="Selecione as opcoes que devem constar na proposta:",
+            bg=dialog_bg,
+            anchor="w",
         ).pack(anchor="w", padx=12, pady=(12, 8))
 
         vars_by_code: dict[str, tk.BooleanVar] = {}
+        saved_codes = set(self.case_data.propostas_selecionadas)
         for modalidade in MODALIDADES:
-            var = tk.BooleanVar(value=True)
+            var = tk.BooleanVar(value=(modalidade["codigo"] in saved_codes) if saved_codes else True)
             vars_by_code[modalidade["codigo"]] = var
-            ttk.Checkbutton(
+            tk.Checkbutton(
                 dialog,
                 text=f'{modalidade["codigo"]} - {modalidade["modalidade"]} ({modalidade["parcelas"]}x)',
                 variable=var,
+                bg=dialog_bg,
+                activebackground=dialog_bg,
+                selectcolor=dialog_bg,
+                anchor="w",
             ).pack(anchor="w", padx=16, pady=2)
 
         result: dict[str, set[str] | None] = {"selected": None}
@@ -1365,6 +1883,11 @@ class MainWindow:
                     format_decimal_br(subdebito.valor_bloqueado),
                 ),
             )
+        total = len(self.case_data.subdebitos)
+        if total > 7:
+            self.subdebito_count_var.set(f"Mostrando 7 de {total} subdebitos. Use a barra lateral para ver os demais.")
+        else:
+            self.subdebito_count_var.set(f"{total} subdebito(s).")
         self.refresh_summary()
 
     def clear_subdebito_form(self) -> None:
