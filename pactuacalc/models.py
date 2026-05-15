@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 import json
 import re
+import unicodedata
 from pathlib import Path
 
 
@@ -25,9 +26,22 @@ CNJ_PATTERN = re.compile(r"\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}")
 NUP_PATTERN = re.compile(r"\d{5}\.\d{6}/\d{4}-\d{2}")
 UG_GESTAO_PATTERN = re.compile(r"^\d{6}/\d{5}$")
 GRU_CR_PATTERN = re.compile(r"^\d{5}-\d$")
+HONORARIOS_UG = "110060"
+HONORARIOS_GESTAO = "00001"
+HONORARIOS_GRU_CR = "91710-9"
 CPF_CNPJ_PATTERN = re.compile(
     r"^(?:\d{3}\.\d{3}\.\d{3}-\d{2}|\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})$"
 )
+
+
+def normalized_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value or "")
+    return "".join(char for char in normalized if not unicodedata.combining(char)).upper()
+
+
+def is_honorarios_text(value: str) -> bool:
+    text = normalized_text(value)
+    return "HONOR" in text
 
 
 def parse_iso_date(value: str) -> date | None:
@@ -84,6 +98,19 @@ class Subdebito:
     @property
     def valor_total(self) -> float:
         return round(self.valor_atualizado + self.multa_art_523, 2)
+
+    def is_honorarios(self) -> bool:
+        type_match = is_honorarios_text(self.tipo)
+        code_match = self.ug == HONORARIOS_UG and self.gru_cr == HONORARIOS_GRU_CR
+        return type_match or code_match
+
+    def normalize_honorarios(self) -> None:
+        if not self.is_honorarios():
+            return
+        self.tipo = "HONORÁRIOS"
+        self.ug = HONORARIOS_UG
+        self.gestao = HONORARIOS_GESTAO
+        self.gru_cr = HONORARIOS_GRU_CR
 
     def validate(self) -> list[str]:
         errors: list[str] = []

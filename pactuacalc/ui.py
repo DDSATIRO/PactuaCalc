@@ -123,7 +123,7 @@ class MainWindow:
                 self.case_data.competencia_atualizacao = parsed.strftime("%m/%Y")
         if not self.case_data.tipo_parcela:
             self.case_data.tipo_parcela = "VARIAVEL (POS-FIXADO)"
-        if self.case_data.multa_percentual <= 0:
+        if self.case_data.multa_percentual <= 0 and not self.case_data.subdebitos:
             self.case_data.multa_percentual = 10.0
 
     def show_about(self) -> None:
@@ -399,7 +399,22 @@ class MainWindow:
         center = ttk.Panedwindow(main, orient=tk.HORIZONTAL)
         center.pack(fill="both", expand=True, side="top", pady=(10, 0))
 
-        grid_frame = ttk.Labelframe(center, text="Subdebitos", padding=(12, 10))
+        subdebito_label = tk.Frame(center, bg="#f4f6f8")
+        tk.Label(
+            subdebito_label,
+            text="Subdébitos - Insira cada parte do débito, conforme cálculos ",
+            bg="#f4f6f8",
+            fg="#1f2937",
+            font=("Segoe UI", 9, "bold"),
+        ).pack(side="left")
+        tk.Label(
+            subdebito_label,
+            text="(o subdébito em vermelho, é considerado honorários e terá desconto conforme subdébitos principais, salvo se exclusivo).",
+            bg="#f4f6f8",
+            fg="#b91c1c",
+            font=("Segoe UI", 9, "bold"),
+        ).pack(side="left")
+        grid_frame = ttk.Labelframe(center, labelwidget=subdebito_label, padding=(12, 10))
         center.add(grid_frame, weight=3)
         self._build_subdebito_grid(grid_frame)
 
@@ -531,6 +546,7 @@ class MainWindow:
                 width = 100
             self.tree.column(col, width=width, anchor=anchor)
         self.tree.grid(row=0, column=0, sticky="nsew")
+        self.tree.tag_configure("honorarios", foreground="#b91c1c")
         self.tree.bind("<<TreeviewSelect>>", self.on_select_subdebito)
 
         scrollbar = ttk.Scrollbar(parent, orient="vertical", command=self.tree.yview)
@@ -611,6 +627,7 @@ class MainWindow:
         summary_scroll = ttk.Scrollbar(summary_frame, orient="vertical", command=self.summary_tree.yview)
         summary_scroll.grid(row=0, column=1, sticky="ns")
         self.summary_tree.configure(yscrollcommand=summary_scroll.set)
+        self.summary_tree.tag_configure("honorarios", foreground="#b91c1c")
         ttk.Label(
             summary_frame,
             text="Selecione, para alterar a Descricao Consolidada",
@@ -934,6 +951,7 @@ class MainWindow:
                 )
             else:
                 self.case_data = incoming
+                self.clear_case_selection_state()
                 self.status_var.set(
                     f"Relatorio carregado: {Path(path).name} | Tipo: {report_type.upper()} | Anexados: {len(self.case_data.relatorios_anexados)} | Lancamentos TCU: {len(self.case_data.lancamentos_tcu)}"
                 )
@@ -958,6 +976,7 @@ class MainWindow:
             return
         try:
             self.case_data = CaseData.load_json(path)
+            self.clear_case_selection_state()
             self.refresh_all()
             self.status_var.set(f"JSON carregado: {Path(path).name}")
         except Exception as exc:
@@ -1713,6 +1732,7 @@ class MainWindow:
             referencia_origem=self.case_data.processo,
             valor_atualizado=0.0,
         )
+        novo.normalize_honorarios()
         self.case_data.subdebitos.append(novo)
         self.refresh_subdebitos()
 
@@ -1776,6 +1796,7 @@ class MainWindow:
             item.valor_bloqueado = parse_decimal_input(self.subdebito_vars["valor_bloqueado"].get())
             item.ug, item.gestao = self._normalize_ug_value(self.subdebito_vars["ug"].get())
             item.gru_cr = self._normalize_gru_value(self.subdebito_vars["gru_cr"].get())
+            item.normalize_honorarios()
         except ValueError:
             messagebox.showerror("Dados invalidos", "Valores numericos do subdebito sao invalidos.")
             return
@@ -1794,6 +1815,7 @@ class MainWindow:
         for item in self.case_data.subdebitos:
             if (item.ug_gestao or "-") == ug_gestao and (item.gru_cr or "-") == gru_cr:
                 item.descricao = descricao
+                item.normalize_honorarios()
         self.refresh_subdebitos()
 
     def apply_batch_codes(self) -> None:
@@ -1815,6 +1837,7 @@ class MainWindow:
                 item.gestao = gestao
             if gru_cr:
                 item.gru_cr = gru_cr
+            item.normalize_honorarios()
 
         self.refresh_subdebitos()
         self.status_var.set(f"Codigos aplicados em {len(self.selected_subdebito_indices)} subdebito(s).")
@@ -1869,6 +1892,8 @@ class MainWindow:
         for item in self.tree.get_children():
             self.tree.delete(item)
         for index, subdebito in enumerate(self.case_data.subdebitos):
+            subdebito.normalize_honorarios()
+            tags = ("honorarios",) if subdebito.is_honorarios() else ()
             self.tree.insert(
                 "",
                 "end",
@@ -1882,6 +1907,7 @@ class MainWindow:
                     format_decimal_br(subdebito.multa_art_523),
                     format_decimal_br(subdebito.valor_bloqueado),
                 ),
+                tags=tags,
             )
         total = len(self.case_data.subdebitos)
         if total > 7:
@@ -1894,18 +1920,27 @@ class MainWindow:
         for var in self.subdebito_vars.values():
             var.set("")
 
+    def clear_case_selection_state(self) -> None:
+        self.selected_subdebito_indices = []
+        self.selected_summary_key = None
+        self.clear_subdebito_form()
+        self.summary_description_var.set("")
+
     def refresh_summary(self) -> None:
         consolidated = consolidar_por_chave_arrecadatoria(self.case_data.subdebitos)
         for item in self.summary_tree.get_children():
             self.summary_tree.delete(item)
         for index, item in enumerate(consolidated):
+            item.normalize_honorarios()
             ug = item.ug_gestao or "-"
             gru = item.gru_cr or "-"
             item_id = f"{ug}|{gru}|{index}"
 
-            tags = ()
+            tags = []
             if ug == "-" or gru == "-":
-                tags = ("missing_code",)
+                tags.append("missing_code")
+            if item.is_honorarios():
+                tags.append("honorarios")
 
             self.summary_tree.insert(
                 "",
@@ -1918,7 +1953,7 @@ class MainWindow:
                     format_currency_br(item.valor_bloqueado),
                     format_currency_br(item.valor_total),
                 ),
-                tags=tags,
+                tags=tuple(tags),
             )
         if self.selected_summary_key:
             for row_id in self.summary_tree.get_children():

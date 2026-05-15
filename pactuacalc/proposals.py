@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-import unicodedata
 
 from pactuacalc.formatting import format_currency_br, format_percent_br
-from pactuacalc.models import CaseData, ProposalSelection, Subdebito, parse_iso_date
+from pactuacalc.models import CaseData, ProposalSelection, Subdebito, normalized_text, parse_iso_date
 from pactuacalc.proposal_render import ProposalPdfLayout, SimplePdf
 from pactuacalc.services import consolidar_por_chave_arrecadatoria, total_bloqueado_efetivo
 from pactuacalc.selic_api import get_mean_selic_12_months
@@ -57,6 +56,7 @@ class ProposalScenario:
     observacao: str = ""
     nota_calculo_selic: str = ""
     rows: list[ProposalRow] | None = None
+    adaptada: bool = False
 
 
 MODALIDADES = [
@@ -124,14 +124,9 @@ def _round_distribution(values: list[float], total: float) -> list[float]:
     return distributed
 
 
-def _normalized_text(value: str) -> str:
-    normalized = unicodedata.normalize("NFKD", value or "")
-    return "".join(char for char in normalized if not unicodedata.combining(char)).upper()
-
-
 def _is_honorarios_ou_encargos(item: Subdebito) -> bool:
-    texto = f"{_normalized_text(item.tipo)} {_normalized_text(item.descricao)}"
-    return "HONORAR" in texto or "HONORARIO" in texto or "ENCARGO" in texto
+    texto = f"{normalized_text(item.tipo)} {normalized_text(item.descricao)}"
+    return item.is_honorarios() or "ENCARGO" in texto
 
 
 def _base_para_faixa_vista(items: list[Subdebito]) -> float:
@@ -325,6 +320,11 @@ def _apply_selection_to_scenario(
         if selection.entrada_percentual is not None
         else scenario.entrada_minima_percentual
     )
+    adaptada = (
+        parcelas != scenario.parcelas
+        or abs(desconto_percentual - scenario.desconto_percentual) > 0.0001
+        or abs(entrada_percentual - scenario.entrada_minima_percentual) > 0.0001
+    )
     desconto_valor = round(desconto_base * (desconto_percentual / 100.0), 2)
     alvo_entrada = round(total_divida * (entrada_percentual / 100.0), 2)
     if entrada_percentual > 0 and case_data.proposal_rules.aproveitar_bloqueio_como_entrada:
@@ -363,6 +363,7 @@ def _apply_selection_to_scenario(
         observacao=scenario.observacao,
         nota_calculo_selic=nota_calculo_selic or scenario.nota_calculo_selic,
         rows=rows,
+        adaptada=adaptada,
     )
 
 
@@ -617,9 +618,18 @@ def _scenario_subtitle(case_data: CaseData, scenario: ProposalScenario, total_di
     ).strip()
 
 
+def _scenario_title_modalidade(scenario: ProposalScenario) -> str:
+    modalidade = scenario.modalidade
+    if scenario.codigo in OPTIONAL_ENTRY_CODES and scenario.entrada_minima_percentual > 0:
+        if scenario.codigo == "1":
+            return "PARCELAMENTO COM ENTRADA"
+        return modalidade.upper().replace("SEM ENTRADA", "COM ENTRADA")
+    return modalidade.upper()
+
+
 def _render_scenario(layout: ProposalPdfLayout, case_data: CaseData, scenario: ProposalScenario, total_divida: float) -> None:
     color = (0.93, 0.95, 0.84) if scenario.codigo in {"2", "3.A", "3.B"} else (0.97, 0.93, 0.78)
-    title = f"OPÇÃO {scenario.codigo}: {scenario.modalidade.upper()}"
+    title = f"OPÇÃO {scenario.codigo}: {_scenario_title_modalidade(scenario)}"
     if scenario.parcelas == 1:
         title += " (PARCELA ÚNICA)"
     else:
@@ -631,6 +641,14 @@ def _render_scenario(layout: ProposalPdfLayout, case_data: CaseData, scenario: P
             tipo_str = "FIXAS"
         title += f" ({scenario.parcelas} parcelas {tipo_str})"
     layout.block_title(title, fill=color)
+    if scenario.adaptada:
+        layout.paragraph(
+            "* opção adaptada ao caso concreto.",
+            size=7,
+            font="F3",
+            leading=8,
+            color=(0.45, 0.18, 0.10),
+        )
 
     if case_data.tipo_parcela == "FIXO (PREFIXADO)" and scenario.parcelas > 1:
         total_bloqueado = round(sum(row.valor_bloqueado for row in scenario.rows or []), 2)

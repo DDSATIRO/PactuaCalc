@@ -9,13 +9,14 @@ import unicodedata
 
 import pdfplumber
 
-from pactuacalc.models import CaseData, Subdebito, TcuLancamento, parse_iso_date
+from pactuacalc.models import HONORARIOS_GRU_CR, CaseData, Subdebito, TcuLancamento, parse_iso_date
 
 
 SECTION_PATTERNS = {
-    "RESUMO DO CALCULO": [r"RESUMO DO C.LCULO"],
-    "I - PARTES": [r"I - PARTES", r"I - SUCUMB.NCIAS"],
-    "II - TOTALIZACAO": [r"II - TOTALIZA..O", r"II - TOTALIZACAO"],
+    "RESUMO DO CALCULO": [r"(?m)^\s*RESUMO DO C.LCULO"],
+    "I - PARTES": [r"(?m)^\s*(?:I\s*-\s*)?PARTES\b"],
+    "I - SUCUMBENCIAS": [r"(?m)^\s*(?:I\s*-\s*)?SUCUMB.NCIAS\b"],
+    "II - TOTALIZACAO": [r"(?:^|[\n\f])\s*(?:II\s*-\s*)?TOTALIZA..O\b", r"(?:^|[\n\f])\s*(?:II\s*-\s*)?TOTALIZACAO\b"],
     "OBSERVACOES DIGITADAS PELO USUARIO": [
         r"OBSERVA..ES DIGITADAS PELO USU.RIO",
         r"OBSERVACOES DIGITADAS PELO USUARIO",
@@ -85,6 +86,39 @@ def normalize_anchor_text(value: str) -> str:
     return "".join(ch for ch in normalized if not unicodedata.combining(ch)).upper()
 
 
+def normalize_anchor_text_with_index_map(value: str) -> tuple[str, list[int]]:
+    chars: list[str] = []
+    index_map: list[int] = []
+    for original_index, char in enumerate(value):
+        for normalized_char in unicodedata.normalize("NFKD", char):
+            if unicodedata.combining(normalized_char):
+                continue
+            chars.append(normalized_char.upper())
+            index_map.append(original_index)
+    return "".join(chars), index_map
+
+
+def _has_negative_honorarios_context(normalized_text: str) -> bool:
+    return any(
+        pattern in normalized_text
+        for pattern in (
+            "SEM HONOR",
+            "EXCETO HONOR",
+            "EXCLUI HONOR",
+            "EXCLUIDO HONOR",
+            "EXCLUIDOS HONOR",
+            "NAO INCLUI HONOR",
+            "NAO CONTEM HONOR",
+        )
+    )
+
+
+def _is_import_honorarios_text(normalized_text: str) -> bool:
+    if "HONOR" not in normalized_text or _has_negative_honorarios_context(normalized_text):
+        return False
+    return "ADV" in normalized_text or "SUCUMB" in normalized_text or "HONORAR" in normalized_text
+
+
 def denormalize_month(month_name: str) -> int | None:
     normalized = normalize_anchor_text(month_name)
     return PT_BR_MONTHS.get(normalized)
@@ -111,13 +145,13 @@ def extract_text_by_page(path: str | Path) -> list[str]:
 
 def split_sections(text: str) -> ParsedSections:
     positions: list[tuple[int, str]] = []
-    normalized_text = normalize_anchor_text(text)
+    normalized_text, index_map = normalize_anchor_text_with_index_map(text)
     for canonical_title, patterns in SECTION_PATTERNS.items():
         matches = [
             re.search(pattern, normalized_text, flags=re.IGNORECASE)
             for pattern in patterns
         ]
-        indexes = [match.start() for match in matches if match]
+        indexes = [index_map[match.start()] for match in matches if match]
         if indexes:
             positions.append((min(indexes), canonical_title))
     positions.sort()
@@ -129,12 +163,58 @@ def split_sections(text: str) -> ParsedSections:
     return ParsedSections(raw_text=text, sections=sections)
 
 
+def extract_totalizacao_section(text: str) -> str:
+    normalized_text, index_map = normalize_anchor_text_with_index_map(text)
+    match = re.search(r"(?:^|[\n\f])\s*(?:II\s*-\s*)?TOTALIZA..O\b", normalized_text)
+    if not match:
+        match = re.search(r"(?:^|[\n\f])\s*(?:II\s*-\s*)?TOTALIZACAO\b", normalized_text)
+    if not match:
+        return ""
+    start = index_map[match.start()]
+
+    next_match = re.search(
+        r"(?:^|[\n\f])\s*(?:OBSERVACOES DIGITADAS PELO USUARIO|DEMONSTRATIVO DE PARCELAS)\b",
+        normalized_text[match.end() :],
+    )
+    end = index_map[match.end() + next_match.start()] if next_match else len(text)
+    return text[start:end].strip()
+
+
 def parse_brl_money(value: str) -> float:
     cleaned = value.strip().replace(".", "").replace(",", ".")
     try:
         return float(Decimal(cleaned))
     except (InvalidOperation, ValueError):
         return 0.0
+
+
+def money_matches_without_percent(line: str) -> list[str]:
+    matches: list[str] = []
+    for match in MONEY_RE.finditer(line):
+        next_char = line[match.end() : match.end() + 1]
+        if next_char == "%":
+            continue
+        matches.append(match.group(0))
+    return matches
+
+
+def remove_money_without_percent(line: str) -> str:
+    return MONEY_RE.sub(lambda match: "" if line[match.end() : match.end() + 1] != "%" else match.group(0), line)
+
+
+def clean_partes_description(line: str) -> str:
+    percent_matches = list(re.finditer(r"\d{1,3},\d{1,4}\s*%?", line))
+    calc_percent_matches = [
+        match
+        for match in percent_matches
+        if re.search(r"\bX\s*$", normalize_anchor_text(line[: match.start()]))
+    ]
+    if calc_percent_matches:
+        description = line[: calc_percent_matches[-1].end()]
+    else:
+        description = remove_money_without_percent(line)
+    description = re.sub(r"\s{2,}", " ", description)
+    return description.strip(" -\t")
 
 
 def find_label_value(text: str, labels: list[str]) -> str:
@@ -206,7 +286,7 @@ def infer_tipo_parcela(text: str) -> str:
     return "VARIAVEL (POS-FIXADO)"
 
 
-def parse_partes_section(section_text: str, processo: str) -> list[Subdebito]:
+def parse_partes_section(section_text: str, processo: str, force_tipo: str | None = None) -> list[Subdebito]:
     subdebitos: list[Subdebito] = []
     lines = [line.strip() for line in section_text.splitlines() if line.strip()]
     for line in lines:
@@ -219,28 +299,36 @@ def parse_partes_section(section_text: str, processo: str) -> list[Subdebito]:
             or "TOTAL (R$)" in normalized_line
         ):
             continue
-        money_matches = MONEY_RE.findall(line)
+        money_matches = money_matches_without_percent(line)
         if not money_matches:
             continue
-        description = MONEY_RE.sub("", line).strip(" -\t")
+        has_description_percentage = "%" in line or re.search(
+            r"\bX\s+\d{1,3},\d{1,4}\b",
+            normalized_line,
+        )
+        if has_description_percentage and len(money_matches) < 4:
+            continue
+        description = clean_partes_description(line)
         value = parse_brl_money(money_matches[-1])
         if value <= 0:
             continue
             
-        is_honorarios = "HON" in normalized_line and ("ADV" in normalized_line or "SUCUMB" in normalized_line)
+        is_honorarios = force_tipo == "HONORÁRIOS" or (
+            force_tipo is None and _is_import_honorarios_text(normalized_line)
+        )
         if is_honorarios:
             subdebitos.append(
                 Subdebito(
                     tipo="HONORÁRIOS",
-                    descricao="Honorarios advocaticios",
+                    descricao=description or "Honorarios advocaticios",
                     referencia_origem=processo or description or "Honorarios",
                     valor_atualizado=value,
                     ug="110060",
                     gestao="00001",
-                    gru_cr="91719-9",
+                    gru_cr=HONORARIOS_GRU_CR,
                 )
             )
-        else:
+        elif force_tipo != "HONORÁRIOS":
             subdebitos.append(
                 Subdebito(
                     tipo="PRINCIPAL",
@@ -257,9 +345,12 @@ def parse_honorarios(section_text: str) -> Subdebito | None:
         return None
     lines = [line.strip() for line in section_text.splitlines() if line.strip()]
     for line in lines:
-        if "honor" not in line.lower():
+        normalized_line = normalize_anchor_text(line)
+        if not _is_import_honorarios_text(normalized_line):
             continue
-        money_matches = MONEY_RE.findall(line)
+        if "VALOR DA CAUSA" in normalized_line or re.search(r"\bX\s+\d{1,3},\d{1,4}\s*%?\b", normalized_line):
+            continue
+        money_matches = money_matches_without_percent(line)
         if not money_matches:
             continue
         return Subdebito(
@@ -269,12 +360,12 @@ def parse_honorarios(section_text: str) -> Subdebito | None:
             valor_atualizado=parse_brl_money(money_matches[-1]),
             ug="110060",
             gestao="00001",
-            gru_cr="91719-9",
+            gru_cr=HONORARIOS_GRU_CR,
         )
     return None
 
 
-def parse_totalizacao_details(section_text: str) -> tuple[float, float]:
+def parse_totalizacao_values(section_text: str) -> tuple[float, float, float]:
     subtotal = 0.0
     multa_total = 0.0
     multa_percentual = 0.0
@@ -294,28 +385,56 @@ def parse_totalizacao_details(section_text: str) -> tuple[float, float]:
 
     if multa_total > 0 and subtotal > 0 and multa_percentual == 0.0:
         multa_percentual = round((multa_total / subtotal) * 100, 2)
+    return multa_percentual, multa_total, subtotal
+
+
+def parse_totalizacao_details(section_text: str) -> tuple[float, float]:
+    multa_percentual, multa_total, _subtotal = parse_totalizacao_values(section_text)
     return multa_percentual, multa_total
 
 
-def distribuir_multa_nos_subdebitos(subdebitos: list[Subdebito], multa_total: float, multa_percentual: float) -> None:
-    principais = [item for item in subdebitos if item.tipo in ("principal", "honorarios")]
-    if not principais:
+def _money_close(left: float, right: float) -> bool:
+    return abs(round(left - right, 2)) <= 0.02
+
+
+def distribuir_multa_nos_subdebitos(
+    subdebitos: list[Subdebito],
+    multa_total: float,
+    multa_percentual: float,
+    subtotal_base: float = 0.0,
+) -> None:
+    principais = [item for item in subdebitos if normalize_anchor_text(item.tipo) == "PRINCIPAL"]
+    todos_com_valor = [item for item in subdebitos if item.valor_atualizado > 0]
+
+    if subtotal_base > 0:
+        total_principais = round(sum(item.valor_atualizado for item in principais), 2)
+        total_todos = round(sum(item.valor_atualizado for item in todos_com_valor), 2)
+        if principais and _money_close(total_principais, subtotal_base):
+            base_multa = principais
+        elif todos_com_valor and _money_close(total_todos, subtotal_base):
+            base_multa = todos_com_valor
+        else:
+            base_multa = principais or todos_com_valor
+    else:
+        base_multa = principais or todos_com_valor
+
+    if not base_multa:
         return
 
     if multa_total > 0:
-        base_total = round(sum(item.valor_atualizado for item in principais), 2)
+        base_total = round(sum(item.valor_atualizado for item in base_multa), 2)
         if base_total <= 0:
             return
         acumulado = 0.0
-        for item in principais[:-1]:
+        for item in base_multa[:-1]:
             proporcao = item.valor_atualizado / base_total
             item.multa_art_523 = round(multa_total * proporcao, 2)
             acumulado += item.multa_art_523
-        principais[-1].multa_art_523 = round(multa_total - acumulado, 2)
+        base_multa[-1].multa_art_523 = round(multa_total - acumulado, 2)
         return
 
     if multa_percentual > 0:
-        for item in principais:
+        for item in base_multa:
             item.multa_art_523 = round(item.valor_atualizado * (multa_percentual / 100), 2)
 
 
@@ -325,7 +444,8 @@ def parse_projef_report(path: str | Path) -> CaseData:
     parsed = split_sections(raw_text)
     resumo = parsed.sections.get("RESUMO DO CALCULO", parsed.raw_text)
     partes = parsed.sections.get("I - PARTES", "")
-    totalizacao = parsed.sections.get("II - TOTALIZACAO", "")
+    sucumbencias = parsed.sections.get("I - SUCUMBENCIAS", "")
+    totalizacao = parsed.sections.get("II - TOTALIZACAO", "") or extract_totalizacao_section(parsed.raw_text)
     observacoes = parsed.sections.get("OBSERVACOES DIGITADAS PELO USUARIO", "")
 
     identificador = extract_identifier(parsed.raw_text)
@@ -341,11 +461,11 @@ def parse_projef_report(path: str | Path) -> CaseData:
 
     report_date = extract_report_date(parsed.raw_text)
     competencia_atualizacao = competencia_from_date(report_date)
-    multa_percentual, multa_total = parse_totalizacao_details(totalizacao)
-    if multa_percentual <= 0:
-        multa_percentual = 10.0
-    subdebitos = parse_partes_section(partes, processo_match.group(0) if processo_match else "")
-    distribuir_multa_nos_subdebitos(subdebitos, multa_total, multa_percentual)
+    multa_percentual, multa_total, subtotal_totalizacao = parse_totalizacao_values(totalizacao)
+    processo_origem = processo_match.group(0) if processo_match else ""
+    subdebitos = parse_partes_section(partes, processo_origem)
+    subdebitos.extend(parse_partes_section(sucumbencias, processo_origem, force_tipo="HONORÁRIOS"))
+    distribuir_multa_nos_subdebitos(subdebitos, multa_total, multa_percentual, subtotal_totalizacao)
     honorarios = parse_honorarios(totalizacao)
     if honorarios:
         subdebitos.append(honorarios)
@@ -507,9 +627,9 @@ def _extract_tcu_saldo_total(resumo_text: str) -> float:
 
 def _infer_tcu_subdebito_tipo(origem_debito: str) -> str:
     normalized = normalize_anchor_text(origem_debito)
-    if "SEM HONORAR" in normalized:
+    if _has_negative_honorarios_context(normalized):
         return "PRINCIPAL"
-    if "HONORAR" in normalized:
+    if _is_import_honorarios_text(normalized):
         return "HONORÁRIOS"
     return "PRINCIPAL"
 

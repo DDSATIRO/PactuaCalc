@@ -10,8 +10,10 @@ Base inicial do app descrito no documento técnico consolidado do projeto Pactua
   - Cálculos de juros simples para parcelas pré-fixadas (histórico Selic via API do Banco Central).
   - Quadro comparativo e cálculo detalhado de descontos e opções de carência.
   - Demonstrações de médias mensais e consolidações por modalidade.
+  - Sinalização no PDF de opções adaptadas ao caso concreto quando entrada, desconto ou parcelas forem ajustados em relação ao padrão.
 - **Subdébitos e Bloqueios Judiciais**:
   - Classificação rigorosa em valores `PRINCIPAL` e `HONORÁRIOS`.
+  - Honorários são reconhecidos por tipo, pela chave `UG 110060` + `GRU 91710-9` e, na importação, por texto afirmativo sem contexto negativo como "sem honorários".
   - Mecanismo de distribuição inteligente de saldo judicial bloqueado.
 - **Interface Gráfica (Desktop)**: Construída via `tkinter` com botão "Sobre" com licenças embutidas, campo de condições adicionais com sinalização visual e ordem de tabulação padronizada.
 - **Controle Remoto de Versão**: Sistema de kill switch e notificação de atualização via arquivo hospedado no GitHub.
