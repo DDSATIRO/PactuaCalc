@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from pathlib import Path
 
-from pactuacalc.models import CaseData, Subdebito
+from pactuacalc.models import CaseData, ProposalSelection, Subdebito
 from pactuacalc.parser import (
     _parse_tcu_lancamentos,
     _extract_tcu_saldo_debito,
@@ -84,9 +84,110 @@ def test_build_proposal_scenarios_retorna_modalidades() -> None:
     assert cenarios[0].codigo == "1"
     assert cenarios[-1].codigo == "4.D"
     vista = next(cenario for cenario in cenarios if cenario.codigo == "2")
-    assert vista.desconto_percentual == 20.0
-    assert vista.desconto_valor == 220.0
-    assert vista.valor_final == 880.0
+    assert vista.desconto_percentual == 50.0
+    assert vista.desconto_valor == 550.0
+    assert vista.valor_final == 550.0
+
+
+def test_build_proposal_scenarios_aplica_proposta_salva() -> None:
+    case = build_valid_case()
+    case.subdebitos[0].valor_bloqueado = 100.0
+    selecoes = {
+        "4.A": ProposalSelection(
+            entrada_percentual=25.0,
+            desconto_percentual=20.0,
+            parcelas=10,
+        )
+    }
+    cenario = build_proposal_scenarios(case, selected_codes={"4.A"}, proposal_selections=selecoes)[0]
+    assert cenario.entrada_minima_percentual == 25.0
+    assert cenario.desconto_percentual == 20.0
+    assert cenario.parcelas == 10
+    assert cenario.entrada_gru == 175.0
+    assert cenario.desconto_valor == 220.0
+    assert cenario.saldo_remanescente == 605.0
+    assert cenario.valor_parcela == 60.5
+
+
+def test_entrada_opcional_em_proposta_sem_desconto_nao_cria_desconto() -> None:
+    case = build_valid_case()
+    selecoes = {"1": ProposalSelection(entrada_percentual=10.0, desconto_percentual=0.0, parcelas=60)}
+
+    cenario = build_proposal_scenarios(case, selected_codes={"1"}, proposal_selections=selecoes)[0]
+
+    assert cenario.entrada_minima_percentual == 10.0
+    assert cenario.entrada_gru == 110.0
+    assert cenario.desconto_percentual == 0.0
+    assert cenario.desconto_valor == 0.0
+
+
+def test_desconto_vista_define_faixa_pelos_principais_e_aplica_ao_total() -> None:
+    case = build_valid_case()
+    case.subdebitos = [
+        Subdebito(
+            tipo="PRINCIPAL",
+            descricao="Principal",
+            referencia_origem="1",
+            valor_atualizado=80000.0,
+        ),
+        Subdebito(
+            tipo="HONORÁRIOS",
+            descricao="Honorarios",
+            referencia_origem="2",
+            valor_atualizado=20000.0,
+        ),
+    ]
+
+    vista = build_proposal_scenarios(case, selected_codes={"2"})[0]
+
+    assert vista.desconto_percentual == 30.0
+    assert vista.desconto_valor == 30000.0
+
+
+def test_desconto_vista_progressivo_usa_percentual_efetivo_da_base_sem_honorarios() -> None:
+    case = build_valid_case()
+    case.proposal_rules.calculo_vista = "progressivo"
+    case.subdebitos = [
+        Subdebito(
+            tipo="PRINCIPAL",
+            descricao="Principal",
+            referencia_origem="1",
+            valor_atualizado=150000.0,
+        ),
+        Subdebito(
+            tipo="HONORÁRIOS",
+            descricao="Honorarios",
+            referencia_origem="2",
+            valor_atualizado=50000.0,
+        ),
+    ]
+
+    vista = build_proposal_scenarios(case, selected_codes={"2"})[0]
+
+    assert vista.desconto_percentual == 32.33
+    assert vista.desconto_valor == 64660.0
+
+
+def test_desconto_vista_usa_total_quando_so_ha_honorarios() -> None:
+    case = build_valid_case()
+    case.subdebitos = [
+        Subdebito(
+            tipo="HONORÁRIOS",
+            descricao="Honorarios",
+            referencia_origem="1",
+            valor_atualizado=80000.0,
+        )
+    ]
+
+    vista = build_proposal_scenarios(case, selected_codes={"2"})[0]
+
+    assert vista.desconto_percentual == 30.0
+    assert vista.desconto_valor == 24000.0
+
+
+def test_case_data_carrega_json_sem_propostas_selecionadas() -> None:
+    case = CaseData.from_dict({"processo": "0000000-00.2026.0.00.0000"})
+    assert case.propostas_selecionadas == {}
 
 
 def test_create_proposal_pdf_gera_arquivo() -> None:
