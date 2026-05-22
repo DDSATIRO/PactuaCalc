@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import fields
 import calendar
-from datetime import date
+from datetime import date, datetime
 import json
 from pathlib import Path
+import re
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
@@ -250,23 +251,23 @@ class MainWindow:
         style.configure("App.TLabel", background=base_bg, foreground=text)
         style.configure("Panel.TLabel", background=panel_bg, foreground=text)
         style.configure("Muted.TLabel", background=panel_bg, foreground=muted)
-        style.configure("Brand.TLabel", background="#e8f3f1", foreground="#0f172a", font=("Segoe UI", 17, "bold"))
-        style.configure("Subtitle.TLabel", background="#e8f3f1", foreground="#475569", font=("Segoe UI", 9))
+        style.configure("Brand.TLabel", background="#e8f3f1", foreground="#0f172a", font=("Segoe UI", 15, "bold"))
+        style.configure("Subtitle.TLabel", background="#e8f3f1", foreground="#475569", font=("Segoe UI", 8))
         style.configure("Logo.TLabel", background="#e8f3f1")
         style.configure("Status.TLabel", background="#e8f3f1", foreground="#334155")
         style.configure("TLabel", background=base_bg, foreground=text)
         style.configure("TLabelframe", background=base_bg, bordercolor="#d7dee8", relief="solid")
         style.configure("TLabelframe.Label", background=base_bg, foreground="#1f2937", font=("Segoe UI", 9, "bold"))
-        style.configure("TEntry", fieldbackground=FIELD_BG, bordercolor="#cbd5e1", lightcolor="#cbd5e1", darkcolor="#cbd5e1", padding=3)
-        style.configure("TCombobox", fieldbackground=FIELD_BG, background=FIELD_BG, bordercolor="#cbd5e1", arrowsize=14, padding=3)
-        style.configure("Pink.TCombobox", fieldbackground=TOP_FIELD_BG, background=TOP_FIELD_BG, bordercolor="#cbd5e1", arrowsize=14, padding=3)
+        style.configure("TEntry", fieldbackground=FIELD_BG, bordercolor="#cbd5e1", lightcolor="#cbd5e1", darkcolor="#cbd5e1", padding=2)
+        style.configure("TCombobox", fieldbackground=FIELD_BG, background=FIELD_BG, bordercolor="#cbd5e1", arrowsize=13, padding=2)
+        style.configure("Pink.TCombobox", fieldbackground=TOP_FIELD_BG, background=TOP_FIELD_BG, bordercolor="#cbd5e1", arrowsize=13, padding=2)
         style.map("Pink.TCombobox", fieldbackground=[("readonly", TOP_FIELD_BG)], selectbackground=[("readonly", TOP_FIELD_BG)])
         style.configure("Treeview", rowheight=24, bordercolor="#d7dee8", fieldbackground="#ffffff", background="#ffffff", foreground=text)
         style.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"), background="#edf2f7", foreground="#334155")
-        style.configure("TButton", padding=(10, 5))
+        style.configure("TButton", padding=(8, 4))
         style.configure("Accent.TButton", background=primary, foreground="#ffffff", bordercolor=primary)
         style.map("Accent.TButton", background=[("active", primary_hover), ("pressed", primary_hover)])
-        style.configure("Success.TButton", background="#15803d", foreground="#ffffff", bordercolor="#15803d", font=("Segoe UI", 10, "bold"), padding=(12, 8))
+        style.configure("Success.TButton", background="#15803d", foreground="#ffffff", bordercolor="#15803d", font=("Segoe UI", 10, "bold"), padding=(12, 7))
         style.map("Success.TButton", background=[("active", "#166534"), ("pressed", "#166534")])
         style.configure("Soft.TButton", background="#fff7db", foreground="#493a12", bordercolor="#f1d98c")
         style.map("Soft.TButton", background=[("active", "#ffefb3"), ("pressed", "#ffefb3")])
@@ -277,8 +278,8 @@ class MainWindow:
             return None
         try:
             image = tk.PhotoImage(file=str(logo_path))
-            max_width = 380
-            max_height = 176
+            max_width = 92
+            max_height = 92
             factor = max(
                 1,
                 int(max(image.width() / max_width, image.height() / max_height) + 0.999),
@@ -290,7 +291,17 @@ class MainWindow:
             return None
 
     def _bind_mousewheel(self, widget: tk.Widget, canvas: tk.Canvas) -> None:
-        widget.bind_all("<MouseWheel>", lambda event: canvas.yview_scroll(int(-1 * (event.delta / 120)), "units"))
+        def on_mousewheel(event: tk.Event) -> None:
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def bind_wheel(_event: tk.Event) -> None:
+            widget.bind_all("<MouseWheel>", on_mousewheel)
+
+        def unbind_wheel(_event: tk.Event) -> None:
+            widget.unbind_all("<MouseWheel>")
+
+        widget.bind("<Enter>", bind_wheel)
+        widget.bind("<Leave>", unbind_wheel)
 
     def _make_filter_combobox(
         self,
@@ -347,13 +358,13 @@ class MainWindow:
 
     def _build_layout(self) -> None:
         self.status_var = tk.StringVar()
-        top = ttk.Frame(self.root, style="Header.TFrame", padding=(16, 4, 16, 4))
+        top = ttk.Frame(self.root, style="Header.TFrame", padding=(14, 2, 14, 2))
         top.pack(fill="x")
         top.columnconfigure(1, weight=1)
 
         self.logo_image = self._load_logo()
         if self.logo_image:
-            ttk.Label(top, image=self.logo_image, style="Logo.TLabel").grid(row=0, column=0, rowspan=2, sticky="w", padx=(0, 14))
+            ttk.Label(top, image=self.logo_image, style="Logo.TLabel").grid(row=0, column=0, rowspan=2, sticky="w", padx=(0, 10))
 
         ttk.Label(top, text="PactuaCalc", style="Brand.TLabel").grid(row=0, column=1, sticky="sw")
         ttk.Label(
@@ -364,6 +375,8 @@ class MainWindow:
 
         buttons = ttk.Frame(top, style="Header.TFrame")
         buttons.grid(row=0, column=2, rowspan=2, sticky="e", padx=(18, 0))
+        for col in range(7):
+            buttons.columnconfigure(col, weight=0)
         ttk.Button(
             buttons,
             text="Criar a partir de relatorio",
@@ -387,17 +400,19 @@ class MainWindow:
         ttk.Button(buttons, text="Sobre", command=self.show_about).grid(row=0, column=4, padx=(0, 8), sticky="e")
         ttk.Button(buttons, text="Ajuda", command=self.show_help).grid(row=0, column=5, padx=(0, 8), sticky="e")
         ttk.Button(buttons, text="Sair", command=self.root.destroy).grid(row=0, column=6, sticky="e")
-        ttk.Label(top, textvariable=self.status_var, style="Status.TLabel").grid(row=1, column=1, sticky="w", pady=(2, 0))
+        ttk.Label(buttons, textvariable=self.status_var, style="Status.TLabel").grid(
+            row=1, column=0, columnspan=7, sticky="e", pady=(4, 0)
+        )
 
         main = ttk.Frame(self.root, style="App.TFrame", padding=(16, 6, 16, 16))
         main.pack(fill="both", expand=True)
 
-        header_frame = ttk.Labelframe(main, text="Dados Gerais", padding=(12, 10))
+        header_frame = ttk.Labelframe(main, text="Dados Gerais", padding=(8, 6))
         header_frame.pack(fill="x", side="top")
         self._build_header(header_frame)
 
         center = ttk.Panedwindow(main, orient=tk.HORIZONTAL)
-        center.pack(fill="both", expand=True, side="top", pady=(10, 0))
+        center.pack(fill="both", expand=True, side="top", pady=(6, 0))
 
         subdebito_label = tk.Frame(center, bg="#f4f6f8")
         tk.Label(
@@ -414,11 +429,11 @@ class MainWindow:
             fg="#b91c1c",
             font=("Segoe UI", 9, "bold"),
         ).pack(side="left")
-        grid_frame = ttk.Labelframe(center, labelwidget=subdebito_label, padding=(12, 10))
-        center.add(grid_frame, weight=3)
+        grid_frame = ttk.Labelframe(center, labelwidget=subdebito_label, padding=(8, 6))
+        center.add(grid_frame, weight=4)
         self._build_subdebito_grid(grid_frame)
 
-        edit_frame = ttk.Labelframe(center, text="Edicao do subdebito selecionado", padding=(12, 10))
+        edit_frame = ttk.Labelframe(center, text="Edicao do subdebito selecionado", padding=(8, 6))
         center.add(edit_frame, weight=2)
         self._build_subdebito_editor(edit_frame)
 
@@ -467,7 +482,7 @@ class MainWindow:
             colspan = pos["colspan"]
             
             lbl_text = f"{label}*" if field_name in mandatory_fields else label
-            ttk.Label(parent, text=lbl_text).grid(row=row, column=col, sticky="w", padx=6, pady=4)
+            ttk.Label(parent, text=lbl_text).grid(row=row, column=col, sticky="w", padx=4, pady=2)
             
             if field_name == "tipo_parcela":
                 entry = ttk.Combobox(
@@ -496,8 +511,8 @@ class MainWindow:
                 column=col + 1,
                 columnspan=colspan,
                 sticky="ew",
-                padx=6,
-                pady=4,
+                padx=4,
+                pady=2,
             )
             
             if field_name == "competencia_atualizacao":
@@ -522,7 +537,7 @@ class MainWindow:
                     parent,
                     text="Distribuir Bloqueio",
                     command=self.apply_general_block,
-                ).grid(row=row, column=8, sticky="ew", padx=(6, 0), pady=4)
+                ).grid(row=row, column=8, sticky="ew", padx=(4, 0), pady=2)
 
         for _col in range(8):
             parent.columnconfigure(_col, weight=1)
@@ -533,6 +548,29 @@ class MainWindow:
     def _build_subdebito_grid(self, parent: ttk.Labelframe) -> None:
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(0, weight=1)
+        canvas = tk.Canvas(parent, bg="#f4f6f8", highlightthickness=0, borderwidth=0)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        panel_scroll = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        panel_scroll.grid(row=0, column=1, sticky="ns")
+        canvas.configure(yscrollcommand=panel_scroll.set)
+
+        content = ttk.Frame(canvas, style="App.TFrame")
+        content_id = canvas.create_window((0, 0), window=content, anchor="nw")
+
+        def update_scroll_region(_event: tk.Event) -> None:
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def fit_content_width(event: tk.Event) -> None:
+            canvas.itemconfigure(content_id, width=event.width)
+
+        content.bind("<Configure>", update_scroll_region)
+        canvas.bind("<Configure>", fit_content_width)
+        self._bind_mousewheel(canvas, canvas)
+        self._bind_mousewheel(content, canvas)
+
+        parent = content
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=0)
         self.tree = ttk.Treeview(parent, columns=SUBDEBIT_COLUMNS, show="headings", height=7, selectmode="extended")
         for col in SUBDEBIT_COLUMNS:
             self.tree.heading(col, text=col.replace("_", " ").title())
@@ -556,7 +594,7 @@ class MainWindow:
             row=1, column=0, columnspan=2, sticky="w", padx=2, pady=(3, 0)
         )
 
-        batch_frame = tk.Frame(parent, bg=BATCH_BG, padx=0, pady=10)
+        batch_frame = tk.Frame(parent, bg=BATCH_BG, padx=0, pady=6)
         batch_frame.grid(row=2, column=0, columnspan=2, sticky="ew")
         batch_frame.columnconfigure(1, weight=3)
         batch_frame.columnconfigure(5, weight=2)
@@ -600,14 +638,14 @@ class MainWindow:
             bg=BATCH_BG,
         ).grid(row=1, column=0, columnspan=8, sticky="w", padx=4, pady=(4, 0))
 
-        summary_frame = ttk.Labelframe(parent, text="Débitos consolidados", padding=(10, 8))
-        summary_frame.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        summary_frame = ttk.Labelframe(parent, text="Débitos consolidados", padding=(8, 6))
+        summary_frame.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         summary_frame.columnconfigure(0, weight=1)
         self.summary_tree = ttk.Treeview(
             summary_frame,
             columns=("descricao", "ug_gestao", "gru_cr", "valor_bloqueado", "valor_total"),
             show="headings",
-            height=5,
+            height=4,
         )
         self.summary_tree.heading("descricao", text="Descricao")
         self.summary_tree.heading("ug_gestao", text="UG/Gestao")
@@ -650,7 +688,7 @@ class MainWindow:
             fg="#0b5d1e",
             anchor="e",
         )
-        total_label.grid(row=3, column=0, columnspan=2, sticky="e", pady=(8, 0))
+        total_label.grid(row=3, column=0, columnspan=2, sticky="e", pady=(6, 0))
 
     def _build_subdebito_editor(self, parent: ttk.Labelframe) -> None:
         parent.columnconfigure(1, weight=1)
@@ -668,7 +706,7 @@ class MainWindow:
         ug_values = [self._ug_display(item) for item in self.ug_codes]
         gru_values = [self._gru_display(item) for item in self.gru_codes]
         for idx, (field_name, label) in enumerate(editable_fields):
-            ttk.Label(parent, text=label).grid(row=idx, column=0, sticky="w", padx=4, pady=2)
+            ttk.Label(parent, text=label).grid(row=idx, column=0, sticky="w", padx=4, pady=1)
             if field_name == "tipo":
                 cb = ttk.Combobox(
                     parent,
@@ -677,7 +715,7 @@ class MainWindow:
                     state="readonly",
                     values=("PRINCIPAL", "HONORÁRIOS", "MULTA (exceto art. 523)"),
                 )
-                cb.grid(row=idx, column=1, sticky="ew", padx=4, pady=2)
+                cb.grid(row=idx, column=1, sticky="ew", padx=4, pady=1)
             elif field_name == "ug":
                 cb = self._make_filter_combobox(
                     parent,
@@ -687,7 +725,7 @@ class MainWindow:
                     width=42,
                     on_selected=self._sync_gestao_from_subdebito_ug,
                 )
-                cb.grid(row=idx, column=1, sticky="ew", padx=4, pady=2)
+                cb.grid(row=idx, column=1, sticky="ew", padx=4, pady=1)
                 self.ug_comboboxes.append(cb)
             elif field_name == "gestao":
                 ttk.Label(parent, textvariable=self.subdebito_vars[field_name]).grid(
@@ -695,7 +733,7 @@ class MainWindow:
                     column=1,
                     sticky="w",
                     padx=4,
-                    pady=2,
+                    pady=1,
                 )
             elif field_name == "gru_cr":
                 cb = self._make_filter_combobox(
@@ -705,7 +743,7 @@ class MainWindow:
                     self.gru_display_to_code,
                     width=24,
                 )
-                cb.grid(row=idx, column=1, sticky="ew", padx=4, pady=2)
+                cb.grid(row=idx, column=1, sticky="ew", padx=4, pady=1)
                 self.gru_comboboxes.append(cb)
             else:
                 entry_width = 18 if field_name in {"valor_atualizado", "multa_art_523", "valor_bloqueado"} else 26
@@ -724,24 +762,24 @@ class MainWindow:
                     column=1,
                     sticky="ew",
                     padx=4,
-                    pady=2,
+                    pady=1,
                 )
 
         actions = ttk.Frame(parent)
-        actions.grid(row=len(editable_fields), column=0, columnspan=2, sticky="ew", pady=(6, 4))
+        actions.grid(row=len(editable_fields), column=0, columnspan=2, sticky="ew", pady=(4, 3))
         for col in range(3):
             actions.columnconfigure(col, weight=1)
         ttk.Button(actions, text="Atualizar", command=self.save_subdebito_edits).grid(row=0, column=0, sticky="ew", padx=(0, 4))
         ttk.Button(actions, text="Adicionar", command=self.add_subdebito).grid(row=0, column=1, sticky="ew", padx=4)
         ttk.Button(actions, text="Excluir", command=self.remove_subdebito).grid(row=0, column=2, sticky="ew", padx=(4, 0))
 
-        notes_frame = ttk.Labelframe(parent, text="Condicoes adicionais", padding=(8, 6))
-        notes_frame.grid(row=len(editable_fields) + 1, column=0, columnspan=2, sticky="nsew", pady=(4, 8))
+        notes_frame = ttk.Labelframe(parent, text="Condicoes adicionais", padding=(6, 5))
+        notes_frame.grid(row=len(editable_fields) + 1, column=0, columnspan=2, sticky="nsew", pady=(3, 6))
         notes_frame.columnconfigure(0, weight=1)
         notes_frame.rowconfigure(0, weight=1)
         self.notes_text = tk.Text(
             notes_frame,
-            height=8,
+            height=6,
             wrap="word",
             relief="solid",
             bd=1,
@@ -751,7 +789,7 @@ class MainWindow:
             bg=TOP_FIELD_BG,
             font=("Segoe UI", 9),
             padx=7,
-            pady=5,
+            pady=4,
         )
         self.notes_text.grid(row=0, column=0, sticky="nsew")
         self.notes_text.bind("<KeyRelease>", self._update_notes_bg)
@@ -982,6 +1020,15 @@ class MainWindow:
         except Exception as exc:
             messagebox.showerror("Erro ao abrir JSON", str(exc))
 
+    def _default_case_filename(self, extension: str, include_timestamp: bool) -> str:
+        processo_clean = re.sub(r"[\.\-]", "", self.case_data.processo) if self.case_data.processo else "SPROC"
+        devedor_clean = (self.case_data.devedor or "SDEV")[:30].strip()
+        devedor_clean = re.sub(r'[\\/:*?"<>|]+', "", devedor_clean).strip() or "SDEV"
+        parts = ["PROPOSTA", processo_clean, devedor_clean]
+        if include_timestamp:
+            parts.append(datetime.now().strftime("%d-%m-%Y_%H-%M-%S"))
+        return "-".join(parts) + extension
+
     def save_json(self) -> None:
         self.sync_case_from_form()
         errors = self.case_data.validate(strict_proposal=bool(self.case_data.subdebitos))
@@ -989,6 +1036,7 @@ class MainWindow:
             messagebox.showwarning("Validacoes pendentes", "\n".join(errors))
             return
         path = filedialog.asksaveasfilename(
+            initialfile=self._default_case_filename(".json", include_timestamp=False),
             title="Salvar dados do caso",
             defaultextension=".json",
             filetypes=[("Arquivos JSON", "*.json")],
@@ -1050,13 +1098,7 @@ class MainWindow:
         if not self.show_proposal_preview(scenarios):
             return
 
-        import datetime
-        import re
-        processo_clean = re.sub(r'[\.\-]', '', self.case_data.processo) if self.case_data.processo else "SPROC"
-        devedor_clean = (self.case_data.devedor or "SDEV")[:30].strip()
-        timestamp = datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
-        
-        default_name = f"PROPOSTA-{processo_clean}-{devedor_clean}-{timestamp}.pdf"
+        default_name = self._default_case_filename(".pdf", include_timestamp=True)
 
         path = filedialog.asksaveasfilename(
             initialfile=default_name,

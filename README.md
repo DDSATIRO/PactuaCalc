@@ -52,5 +52,6 @@ Sem internet, o app abre normalmente (degradação graciosa).
 ## Observações
 - A automação Web utiliza o Microsoft Edge nativo (Windows 10/11) via Playwright — sem download de navegador separado.
 - Os modelos de parcelamento foram ajustados para evitar a incidência de juros sobre juros nas propostas pré-fixadas (SELIC).
+- Nas propostas pré-fixadas, a Selic inicial considera a data efetiva da primeira parcela: nas opções com entrada, usa a data da primeira parcela após a entrada, inclusive quando ajustada pelo usuário.
 - A automação possui timeouts robustos para redes lentas e só decrementa a competência de atualização se o ProjefWeb explicitamente rejeitar a data.
 

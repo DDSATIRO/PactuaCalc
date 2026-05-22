@@ -236,15 +236,7 @@ def _fixed_installment_adjustment(
         return round(valor_parcela_base_pura, 2), 1.0, ""
 
     media_selic = get_mean_selic_12_months(case_data.data_atualizacao)
-    data_atual = parse_iso_date(case_data.data_atualizacao)
-    data_primeira = parse_iso_date(case_data.data_primeira_parcela)
-    if data_atual and data_primeira:
-        m_diff = (data_primeira.year - data_atual.year) * 12 + (data_primeira.month - data_atual.month)
-        m_diff = max(m_diff, 0)
-    else:
-        m_diff = 0
-
-    multiplicador = max(m_diff, 1) if entrada_gru > 0 else max(m_diff - 1, 0)
+    multiplicador = _initial_selic_months(case_data, entrada_gru)
     valor_com_atraso = valor_parcela_base_pura * (1 + ((media_selic / 100) * multiplicador))
     meses_ultima_parcela = multiplicador + parcelas - 1
     indice_correcao = media_selic * meses_ultima_parcela
@@ -262,6 +254,23 @@ def _fixed_installment_adjustment(
         f"Parcela fixa (média) {format_currency_br(valor_final_prefixado)}.\n"
     )
     return round(valor_final_prefixado, 2), fator_ajuste_parcela, obs_prefixo
+
+
+def _effective_first_installment_date(case_data: CaseData, entrada_gru: float) -> str:
+    if entrada_gru > 0:
+        return case_data.data_primeira_parcela_com_entrada or _default_first_installment_after_entry(
+            case_data.data_primeira_parcela
+        )
+    return case_data.data_primeira_parcela
+
+
+def _initial_selic_months(case_data: CaseData, entrada_gru: float) -> int:
+    data_atual = parse_iso_date(case_data.data_atualizacao)
+    data_primeira = parse_iso_date(_effective_first_installment_date(case_data, entrada_gru))
+    if not data_atual or not data_primeira:
+        return 0
+    m_diff = (data_primeira.year - data_atual.year) * 12 + (data_primeira.month - data_atual.month)
+    return max(m_diff, 0)
 
 
 def parcela_limites(codigo: str) -> tuple[int, int]:
@@ -430,18 +439,7 @@ def build_proposal_scenarios(
         if parcelas > 1 and case_data.tipo_parcela == "FIXO (PREFIXADO)":
             media_selic = get_mean_selic_12_months(case_data.data_atualizacao)
             
-            data_atual = parse_iso_date(case_data.data_atualizacao)
-            data_primeira = parse_iso_date(case_data.data_primeira_parcela)
-            if data_atual and data_primeira:
-                m_diff = (data_primeira.year - data_atual.year) * 12 + (data_primeira.month - data_atual.month)
-                m_diff = max(m_diff, 0)
-            else:
-                m_diff = 0
-
-            if modalidade["entrada_minima"] > 0 and entrada_gru > 0:
-                multiplicador = max(m_diff, 1)
-            else:
-                multiplicador = max(m_diff - 1, 0)
+            multiplicador = _initial_selic_months(case_data, entrada_gru)
                 
             valor_com_atraso = valor_parcela_base_pura * (1 + ((media_selic / 100) * multiplicador))
             
@@ -683,6 +681,14 @@ def _render_scenario(layout: ProposalPdfLayout, case_data: CaseData, scenario: P
         font="F2",
         color=(0.72, 0.12, 0.12),
     )
+    total_bloqueado_cenario = round(sum(row.valor_bloqueado for row in scenario.rows or []), 2)
+    if total_bloqueado_cenario > 0:
+        layout.paragraph(
+            "Valores bloqueados devem ser assinalados no Parcela PGU com data de aproximadamente 60 dias (mera previsão).",
+            size=8.8,
+            font="F2",
+            color=(0.72, 0.12, 0.12),
+        )
     rows = [
         [
             row.descricao,

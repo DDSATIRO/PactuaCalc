@@ -323,7 +323,13 @@ O valor final apresentado é:
 
 Quando o Tipo de parcela for FIXO (PREFIXADO) e a proposta tiver mais de uma parcela, o app calcula a parcela fixa com base na média aritmética da Selic dos últimos 12 meses.
 
-O app considera a data de atualização e a data da entrada/primeira parcela para estimar o período de correção, calcula a primeira e a última parcela com juros simples e usa a média entre elas como parcela fixa.
+O app considera a data de atualização e a data efetiva da primeira parcela para estimar o período de correção, calcula a primeira e a última parcela com juros simples e usa a média entre elas como parcela fixa.
+
+Nas opções sem entrada, a data efetiva da primeira parcela é a Data da Entrada/Primeira Parcela dos Dados Gerais.
+
+Nas opções com entrada, a Data da Entrada/Primeira Parcela dos Dados Gerais corresponde à entrada. A primeira parcela usa a data própria das opções com entrada, definida automaticamente para o mês seguinte ou ajustada pelo usuário no quadro de propostas.
+
+A quantidade de Selics aplicadas à primeira parcela é a diferença de meses entre a data de atualização e a data efetiva da primeira parcela. Se estiverem no mesmo mês, não há acréscimo inicial; se a primeira parcela estiver no mês seguinte, há uma Selic; se estiver dois meses à frente, há duas Selics, e assim por diante.
 
 Quando esse modo é usado, o PDF inclui memória de cálculo com a taxa média da Selic e os valores considerados.
 
@@ -360,6 +366,8 @@ Nas opções com entrada, a entrada usa a Data da Entrada/Primeira Parcela dos D
 A primeira parcela padrão é calculada para o último dia do mês seguinte ao pagamento da entrada.
 
 O usuário pode antecipar essa data, mas não pode postergá-la além do padrão calculado.
+
+Essa data também é usada no cálculo da parcela pré-fixada quando houver entrada.
 
 ## 8. Condições adicionais
 
@@ -554,6 +562,8 @@ São calculadas com base na média da Selic dos últimos 12 meses.
 
 Quando esse modo é usado, o PDF inclui uma memória de cálculo com os meses considerados e a taxa média.
 
+Nas opções sem entrada, os meses considerados partem da Data da Entrada/Primeira Parcela dos Dados Gerais. Nas opções com entrada, partem da data da primeira parcela após a entrada, inclusive quando essa data for alterada no quadro de ajustes.
+
 ## 15. JSON
 
 O JSON é o arquivo de rascunho do caso.
@@ -571,6 +581,8 @@ Ele guarda:
 Ao abrir um JSON depois, os dados salvos são recuperados.
 
 Se não houver ajustes de proposta salvos, o app usa o padrão geral.
+
+Ao salvar o JSON, o app sugere o mesmo padrão de nome do PDF, mas sem data e hora. Assim, o rascunho tende a ser salvo sobre o JSON anterior do mesmo caso, salvo se o usuário alterar o nome.
 
 ## 16. Alertas comuns
 

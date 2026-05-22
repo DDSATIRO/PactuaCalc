@@ -20,6 +20,7 @@ from pactuacalc.parser import (
     parse_totalizacao_details,
 )
 from pactuacalc.projefweb import competencia_esta_defasada
+import pactuacalc.proposals as proposals
 from pactuacalc.proposals import _scenario_title_modalidade, build_proposal_scenarios, create_proposal_pdf
 from pactuacalc.services import merge_case_data, replace_tcu_case_data
 
@@ -197,6 +198,62 @@ def test_titulo_da_opcao_sem_entrada_muda_quando_entrada_opcional_e_informada() 
     cenario = build_proposal_scenarios(case, selected_codes={"3.A"}, proposal_selections=selecoes)[0]
 
     assert _scenario_title_modalidade(cenario) == "PARCELADO COM ENTRADA"
+
+
+def test_parcela_prefixada_usa_mes_da_primeira_parcela_sem_entrada(monkeypatch) -> None:
+    monkeypatch.setattr(proposals, "get_mean_selic_12_months", lambda _data: 1.0)
+    case = build_valid_case()
+    case.tipo_parcela = "FIXO (PREFIXADO)"
+    case.data_atualizacao = "15/05/2026"
+    case.data_primeira_parcela = "01/06/2026"
+    case.subdebitos = [Subdebito(tipo="PRINCIPAL", descricao="Principal", referencia_origem="1", valor_atualizado=12000.0)]
+
+    cenario = build_proposal_scenarios(case, selected_codes={"3.A"})[0]
+
+    assert cenario.valor_parcela == 852.0
+
+
+def test_parcela_prefixada_nao_aplica_selic_quando_primeira_parcela_no_mes_atual(monkeypatch) -> None:
+    monkeypatch.setattr(proposals, "get_mean_selic_12_months", lambda _data: 1.0)
+    case = build_valid_case()
+    case.tipo_parcela = "FIXO (PREFIXADO)"
+    case.data_atualizacao = "15/05/2026"
+    case.data_primeira_parcela = "31/05/2026"
+    case.data_primeira_parcela_com_entrada = "31/05/2026"
+    case.subdebitos = [Subdebito(tipo="PRINCIPAL", descricao="Principal", referencia_origem="1", valor_atualizado=12000.0)]
+
+    cenario = build_proposal_scenarios(case, selected_codes={"4.A"})[0]
+
+    assert cenario.valor_parcela == 580.25
+
+
+def test_parcela_prefixada_com_entrada_usa_data_primeira_parcela_pos_entrada(monkeypatch) -> None:
+    monkeypatch.setattr(proposals, "get_mean_selic_12_months", lambda _data: 1.0)
+    case = build_valid_case()
+    case.tipo_parcela = "FIXO (PREFIXADO)"
+    case.data_atualizacao = "15/05/2026"
+    case.data_primeira_parcela = "31/05/2026"
+    case.data_primeira_parcela_com_entrada = "30/06/2026"
+    case.subdebitos = [Subdebito(tipo="PRINCIPAL", descricao="Principal", referencia_origem="1", valor_atualizado=12000.0)]
+
+    cenario = build_proposal_scenarios(case, selected_codes={"4.A"})[0]
+
+    assert cenario.valor_parcela == 585.75
+
+
+def test_parcela_prefixada_opcao_adaptada_usa_data_primeira_parcela(monkeypatch) -> None:
+    monkeypatch.setattr(proposals, "get_mean_selic_12_months", lambda _data: 1.0)
+    case = build_valid_case()
+    case.tipo_parcela = "FIXO (PREFIXADO)"
+    case.data_atualizacao = "15/05/2026"
+    case.data_primeira_parcela = "01/06/2026"
+    case.data_primeira_parcela_com_entrada = "01/07/2026"
+    case.subdebitos = [Subdebito(tipo="PRINCIPAL", descricao="Principal", referencia_origem="1", valor_atualizado=12000.0)]
+    selecoes = {"3.A": ProposalSelection(entrada_percentual=10.0, desconto_percentual=20.0, parcelas=10)}
+
+    cenario = build_proposal_scenarios(case, selected_codes={"3.A"}, proposal_selections=selecoes)[0]
+
+    assert cenario.valor_parcela == 894.6
 
 
 def test_desconto_vista_define_faixa_pelos_principais_e_aplica_ao_total() -> None:
@@ -456,6 +513,16 @@ def test_create_proposal_pdf_gera_arquivo() -> None:
     pdf_path = create_proposal_pdf(case, output)
     assert pdf_path.exists()
     assert pdf_path.stat().st_size > 0
+
+
+def test_create_proposal_pdf_informa_bloqueio_no_parcela_pgu() -> None:
+    case = build_valid_case()
+    case.subdebitos[0].valor_bloqueado = 100.0
+    output_dir = Path("C:/Projetos/pactuacalc")
+
+    pdf_path = create_proposal_pdf(case, output_dir / "teste_proposta_bloqueio.pdf")
+
+    assert b"Valores bloqueados devem ser assinalados no Parcela PGU" in pdf_path.read_bytes()
 
 
 def test_parser_tcu_identifica_lancamentos_do_historico() -> None:
