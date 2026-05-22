@@ -11,7 +11,7 @@ import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
 
 from pactuacalc.formatting import format_currency_br, format_decimal_br, format_percent_br, parse_decimal_input
-from pactuacalc.models import CaseData, ProposalSelection, Subdebito, parse_iso_date
+from pactuacalc.models import CaseData, ProposalSelection, Subdebito, normalized_text, parse_iso_date
 from pactuacalc.parser import detect_report_type, parse_projef_report, parse_tcu_report
 from pactuacalc.projefweb import ProjefWebAutomationError, atualizar_relatorio_projef, competencia_esta_defasada
 from pactuacalc.proposals import (
@@ -67,6 +67,26 @@ FIELD_BG = "#fff8e6"
 TOP_FIELD_BG = "#ffe4e6"
 MISSING_BG = "#ffe4e6"
 BATCH_BG = "#dedbd2"
+
+
+def sort_ug_codes(codes: list[dict[str, str]]) -> list[dict[str, str]]:
+    return sorted(
+        codes,
+        key=lambda item: (
+            normalized_text(item.get("descricao", "")),
+            item.get("ug", ""),
+            item.get("gestao", ""),
+        ),
+    )
+
+
+def sort_gru_codes(codes: list[dict[str, str]]) -> list[dict[str, str]]:
+    def code_number(item: dict[str, str]) -> tuple[int, str]:
+        code = item.get("codigo", "")
+        digits = re.sub(r"\D", "", code)
+        return int(digits or "0"), code
+
+    return sorted(codes, key=code_number)
 
 
 class MainWindow:
@@ -207,8 +227,8 @@ class MainWindow:
         except (OSError, json.JSONDecodeError):
             payload = {"ugs": [], "grus": []}
 
-        self.ug_codes = list(payload.get("ugs", []))
-        self.gru_codes = list(payload.get("grus", []))
+        self.ug_codes = sort_ug_codes(list(payload.get("ugs", [])))
+        self.gru_codes = sort_gru_codes(list(payload.get("grus", [])))
         self.ug_by_code = {item["ug"]: item for item in self.ug_codes if item.get("ug")}
         self.ug_display_to_code = {
             self._ug_display(item): item["ug"] for item in self.ug_codes if item.get("ug")

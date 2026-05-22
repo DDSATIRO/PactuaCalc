@@ -166,9 +166,13 @@ A UG é escolhida em lista suspensa. A Gestão é preenchida automaticamente con
 
 A lista pode mostrar a descrição da UG para facilitar a escolha, mas o código gravado no app, no JSON e no PDF é o código.
 
+A lista de UGs é exibida em ordem alfabética pela descrição/nome, sem alterar a vinculação entre código, gestão e descrição.
+
 ### GRU(CR)
 
 A GRU(CR) também é escolhida em lista suspensa. A descrição ajuda na escolha, mas o código é o dado usado pelo app.
+
+As GRU(CR) são exibidas em ordem numérica do código, sem alterar a vinculação entre código e descrição.
 
 Para honorários advocatícios, use UG 110060 e GRU(CR) 91710-9. Ao inserir essa combinação, o app identifica o subdébito como honorários e ajusta o Tipo automaticamente.
 
@@ -233,6 +237,8 @@ Subdébitos sem UG/Gestão ou sem GRU(CR) ficam separados e impedem a geração 
 ### Valor bloqueado geral
 
 Quando o campo Valor bloqueado geral for preenchido, o app pode distribuir esse valor entre os subdébitos proporcionalmente ao valor total de cada um.
+
+Se o usuário informar 0,00 no Valor bloqueado geral e clicar em Distribuir Bloqueio, o app zera os valores bloqueados já lançados nos subdébitos. Isso permite desfazer uma distribuição feita por engano.
 
 Nenhum subdébito recebe valor bloqueado maior que o seu valor total.
 

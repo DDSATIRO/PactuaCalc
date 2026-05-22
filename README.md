@@ -14,7 +14,8 @@ Base inicial do app descrito no documento técnico consolidado do projeto Pactua
 - **Subdébitos e Bloqueios Judiciais**:
   - Classificação rigorosa em valores `PRINCIPAL` e `HONORÁRIOS`.
   - Honorários são reconhecidos por tipo, pela chave `UG 110060` + `GRU 91710-9` e, na importação, por texto afirmativo sem contexto negativo como "sem honorários".
-  - Mecanismo de distribuição inteligente de saldo judicial bloqueado.
+  - Mecanismo de distribuição inteligente de saldo judicial bloqueado, com possibilidade de zerar o bloqueio geral para limpar os valores já distribuídos.
+  - Listas de UG ordenadas por descrição e listas de GRU(CR) ordenadas por código, preservando a vinculação entre códigos e descrições.
 - **Interface Gráfica (Desktop)**: Construída via `tkinter` com botão "Sobre" com licenças embutidas, campo de condições adicionais com sinalização visual e ordem de tabulação padronizada.
 - **Controle Remoto de Versão**: Sistema de kill switch e notificação de atualização via arquivo hospedado no GitHub.
 

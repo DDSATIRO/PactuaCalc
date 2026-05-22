@@ -61,6 +61,25 @@ def test_distribui_bloqueio_geral_proporcionalmente() -> None:
     assert case.subdebitos[0].valor_bloqueado > case.subdebitos[1].valor_bloqueado
 
 
+def test_distribui_bloqueio_geral_zero_limpa_bloqueios_existentes() -> None:
+    case = build_valid_case()
+    case.subdebitos[0].valor_bloqueado = 100.0
+    case.subdebitos.append(
+        Subdebito(
+            tipo="PRINCIPAL",
+            descricao="Segundo",
+            referencia_origem="2",
+            valor_atualizado=500.0,
+            valor_bloqueado=50.0,
+        )
+    )
+
+    case.valor_bloqueado_geral = 0.0
+    distribuir_valor_bloqueado(case)
+
+    assert [item.valor_bloqueado for item in case.subdebitos] == [0.0, 0.0]
+
+
 def test_subdebito_identifica_honorarios_por_tipo_e_normaliza_codigos() -> None:
     item = Subdebito(
         tipo="Honorarios",

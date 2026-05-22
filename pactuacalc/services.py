@@ -7,7 +7,15 @@ from pactuacalc.models import CaseData, Subdebito
 
 def distribuir_valor_bloqueado(case_data: CaseData) -> None:
     total = round(case_data.valor_bloqueado_geral, 2)
-    if total <= 0 or not case_data.subdebitos:
+    if not case_data.subdebitos:
+        return
+
+    if total < 0:
+        raise ValueError("Valor bloqueado geral nao pode ser negativo.")
+
+    if total == 0:
+        for item in case_data.subdebitos:
+            item.valor_bloqueado = 0.0
         return
 
     total_elegivel = round(sum(item.valor_total for item in case_data.subdebitos), 2)
