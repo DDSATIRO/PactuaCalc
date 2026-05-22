@@ -269,6 +269,8 @@ class CaseData:
                 errors.append("Data limite para resposta e obrigatoria.")
             if not self.data_primeira_parcela:
                 errors.append("Data da entrada/primeira parcela e obrigatoria.")
+            if not self.subdebitos:
+                errors.append("Inclua ao menos um subdebito antes de gerar a proposta.")
         else:
             if self.processo and not (
                 CNJ_PATTERN.fullmatch(self.processo) or NUP_PATTERN.fullmatch(self.processo)

@@ -65,8 +65,66 @@ FIELD_LABELS = {
 
 FIELD_BG = "#fff8e6"
 TOP_FIELD_BG = "#ffe4e6"
-MISSING_BG = "#ffe4e6"
+MISSING_BG = "#fee2e2"
 BATCH_BG = "#dedbd2"
+APP_BG = "#f4f6f8"
+HELP_FG = "#64748b"
+RESET_DEFAULTS_FG = "#b91c1c"
+RESET_DEFAULTS_DISABLED_FG = "#111827"
+RESET_DEFAULTS_BUTTON_BG = "SystemButtonFace"
+RESET_DEFAULTS_TEXT = "Valores Padrão alterados. Clique aqui para restaurá-los."
+
+BUTTON_TOOLTIPS = {
+    "create_from_report": "Crie a proposta a partir de um demonstrativo anterior do TCU ou do PROJEF Web.",
+    "add_report": "Adicione outros relatórios TCU ou PROJEF Web ao caso atual.",
+    "open_json": "Abra um arquivo com proposta salva anteriormente.",
+    "save_json": "Salve a proposta atual em arquivo JSON para continuar depois.",
+}
+
+CASE_FIELD_TOOLTIPS = {
+    "processo": "Indique o processo judicial. Se o caso for administrativo, informe o NUP.",
+    "nup_requerimento": "Indique o NUP do requerimento administrativo.",
+    "cpf_cnpj": "Inclua pontos, barra e traços. Exemplos: 000.000.000-00 ou 00.000.000/0000-00.",
+    "competencia_atualizacao": "Indique o mês e o ano da proposta, no formato mm/aaaa.",
+    "data_atualizacao": "Informe a data de atualização da dívida.",
+    "tipo_parcela": (
+        "Informe a modalidade do parcelamento: fixa (pré-fixada) ou variável (pós-fixada). "
+        "Na parcela fixa, os valores são calculados aproximadamente; se houver divergência, "
+        "devem prevalecer os valores do PARCELA PGU."
+    ),
+    "data_limite_resposta": (
+        "Indique uma data limite para o devedor responder. Sugere-se conceder de 5 a 10 dias "
+        "para a resposta."
+    ),
+    "data_primeira_parcela": (
+        "Nas opções com entrada, esta será a data da entrada; a primeira parcela ficará, por padrão, "
+        "no final do mês seguinte. Nas opções sem entrada, esta será a data da primeira parcela. "
+        "Como orientação prática: se a resposta vencer até o dia 15, use vencimento no próprio mês "
+        "do acordo; se vencer depois do dia 15, considere vencimento até o dia 10 do mês seguinte."
+    ),
+    "multa_percentual": "Indique o percentual de multa para eventual descumprimento futuro do acordo.",
+    "valor_bloqueado_geral": (
+        "Indique o valor de bloqueio judicial se quiser distribuí-lo proporcionalmente entre os "
+        "subdébitos. Para desfazer uma distribuição anterior, informe zero e clique novamente em "
+        "Distribuir Bloqueio; os valores distribuídos em cada subdébito serão zerados."
+    ),
+}
+
+BATCH_CODES_TOOLTIP = (
+    "Escolha UG/Gestão e GRU(CR) nas listas suspensas. Os códigos serão inseridos nos subdébitos "
+    "selecionados; se houver mais de um subdébito com a mesma chave, eles serão consolidados no "
+    "quadro de Débitos consolidados."
+)
+
+SUMMARY_TOOLTIP = (
+    "Cada débito consolidado deverá corresponder a uma GRU unificada, reunindo os subdébitos "
+    "com a mesma UG/Gestão e GRU(CR)."
+)
+
+SUBDEBIT_EDITOR_TOOLTIP = (
+    "Selecione um subdébito na tabela para alterar ou excluir seus dados. Para adicionar um "
+    "subdébito manualmente, clique em Adicionar e depois preencha os dados respectivos."
+)
 
 
 def sort_ug_codes(codes: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -87,6 +145,45 @@ def sort_gru_codes(codes: list[dict[str, str]]) -> list[dict[str, str]]:
         return int(digits or "0"), code
 
     return sorted(codes, key=code_number)
+
+
+class HoverTooltip:
+    def __init__(self, widget: tk.Widget, text: str, wraplength: int = 360) -> None:
+        self.widget = widget
+        self.text = text
+        self.wraplength = wraplength
+        self.window: tk.Toplevel | None = None
+        widget.bind("<Enter>", self.show, add="+")
+        widget.bind("<Leave>", self.hide, add="+")
+        widget.bind("<ButtonPress>", self.hide, add="+")
+
+    def show(self, event: tk.Event | None = None) -> None:
+        if self.window or not self.text:
+            return
+        x = (getattr(event, "x_root", 0) or self.widget.winfo_rootx()) + 14
+        y = (getattr(event, "y_root", 0) or self.widget.winfo_rooty()) + 18
+        self.window = tk.Toplevel(self.widget)
+        self.window.wm_overrideredirect(True)
+        self.window.wm_geometry(f"+{x}+{y}")
+        label = tk.Label(
+            self.window,
+            text=self.text,
+            justify="left",
+            wraplength=self.wraplength,
+            bg="#fffdf4",
+            fg="#1f2937",
+            relief="solid",
+            borderwidth=1,
+            padx=8,
+            pady=5,
+            font=("Segoe UI", 9),
+        )
+        label.pack()
+
+    def hide(self, _event: tk.Event | None = None) -> None:
+        if self.window:
+            self.window.destroy()
+            self.window = None
 
 
 class MainWindow:
@@ -275,6 +372,7 @@ class MainWindow:
         style.configure("Subtitle.TLabel", background="#e8f3f1", foreground="#475569", font=("Segoe UI", 8))
         style.configure("Logo.TLabel", background="#e8f3f1")
         style.configure("Status.TLabel", background="#e8f3f1", foreground="#334155")
+        style.configure("Help.TLabel", background=base_bg, foreground=HELP_FG, font=("Segoe UI", 8, "bold"))
         style.configure("TLabel", background=base_bg, foreground=text)
         style.configure("TLabelframe", background=base_bg, bordercolor="#d7dee8", relief="solid")
         style.configure("TLabelframe.Label", background=base_bg, foreground="#1f2937", font=("Segoe UI", 9, "bold"))
@@ -291,6 +389,50 @@ class MainWindow:
         style.map("Success.TButton", background=[("active", "#166534"), ("pressed", "#166534")])
         style.configure("Soft.TButton", background="#fff7db", foreground="#493a12", bordercolor="#f1d98c")
         style.map("Soft.TButton", background=[("active", "#ffefb3"), ("pressed", "#ffefb3")])
+
+    def _attach_tooltip(self, widget: tk.Widget, text: str) -> None:
+        tooltip = HoverTooltip(widget, text)
+        setattr(widget, "_pactuacalc_tooltip", tooltip)
+
+    def _help_icon(self, parent: tk.Widget, text: str, background: str = APP_BG) -> tk.Label:
+        icon = tk.Label(
+            parent,
+            text="?",
+            bg=background,
+            fg=HELP_FG,
+            cursor="question_arrow",
+            font=("Segoe UI", 8, "bold"),
+            padx=2,
+        )
+        self._attach_tooltip(icon, text)
+        return icon
+
+    def _label_with_help(
+        self,
+        parent: tk.Widget,
+        text: str,
+        tooltip: str,
+        row: int,
+        column: int,
+        *,
+        columnspan: int = 1,
+        sticky: str = "w",
+        padx: int | tuple[int, int] = 4,
+        pady: int | tuple[int, int] = 2,
+        background: str = APP_BG,
+        font: tuple[str, int] | tuple[str, int, str] | None = None,
+    ) -> tk.Frame:
+        frame = tk.Frame(parent, bg=background)
+        tk.Label(frame, text=text, bg=background, fg="#1f2937", font=font or ("Segoe UI", 9)).pack(side="left")
+        self._help_icon(frame, tooltip, background=background).pack(side="left", padx=(3, 0))
+        frame.grid(row=row, column=column, columnspan=columnspan, sticky=sticky, padx=padx, pady=pady)
+        return frame
+
+    def _section_label_with_help(self, parent: tk.Widget, text: str, tooltip: str) -> tk.Frame:
+        frame = tk.Frame(parent, bg=APP_BG)
+        tk.Label(frame, text=text, bg=APP_BG, fg="#1f2937", font=("Segoe UI", 9, "bold")).pack(side="left")
+        self._help_icon(frame, tooltip, background=APP_BG).pack(side="left", padx=(4, 0))
+        return frame
 
     def _load_logo(self) -> tk.PhotoImage | None:
         logo_path = self._asset_path("PactuaCalc.png")
@@ -389,7 +531,7 @@ class MainWindow:
         ttk.Label(top, text="PactuaCalc", style="Brand.TLabel").grid(row=0, column=1, sticky="sw")
         ttk.Label(
             top,
-            text="Gerador de Cálculos para acordos",
+            text="Cálculos e propostas para negociação de dívidas — CORAT5",
             style="Subtitle.TLabel",
         ).grid(row=1, column=1, sticky="nw", pady=(1, 0))
 
@@ -397,26 +539,32 @@ class MainWindow:
         buttons.grid(row=0, column=2, rowspan=2, sticky="e", padx=(18, 0))
         for col in range(7):
             buttons.columnconfigure(col, weight=0)
-        ttk.Button(
+        create_btn = ttk.Button(
             buttons,
             text="Criar a partir de relatorio",
             command=self.create_from_any_pdf,
             style="Soft.TButton",
-        ).grid(row=0, column=0, padx=(0, 8), sticky="e")
-        ttk.Button(
+        )
+        create_btn.grid(row=0, column=0, padx=(0, 8), sticky="e")
+        self._attach_tooltip(create_btn, BUTTON_TOOLTIPS["create_from_report"])
+        add_report_btn = ttk.Button(
             buttons,
             text="Adicionar relatorio",
             command=self.add_other_report,
             style="Soft.TButton",
-        ).grid(row=0, column=1, padx=(0, 8), sticky="e")
-        ttk.Button(
+        )
+        add_report_btn.grid(row=0, column=1, padx=(0, 8), sticky="e")
+        self._attach_tooltip(add_report_btn, BUTTON_TOOLTIPS["add_report"])
+        open_json_btn = ttk.Button(
             buttons,
             text="Abrir Json",
             command=self.load_json,
-        ).grid(row=0, column=2, padx=(0, 8), sticky="e")
-        ttk.Button(buttons, text="Salvar Json", command=self.save_json).grid(
-            row=0, column=3, padx=(0, 8), sticky="e"
         )
+        open_json_btn.grid(row=0, column=2, padx=(0, 8), sticky="e")
+        self._attach_tooltip(open_json_btn, BUTTON_TOOLTIPS["open_json"])
+        save_json_btn = ttk.Button(buttons, text="Salvar Json", command=self.save_json)
+        save_json_btn.grid(row=0, column=3, padx=(0, 8), sticky="e")
+        self._attach_tooltip(save_json_btn, BUTTON_TOOLTIPS["save_json"])
         ttk.Button(buttons, text="Sobre", command=self.show_about).grid(row=0, column=4, padx=(0, 8), sticky="e")
         ttk.Button(buttons, text="Ajuda", command=self.show_help).grid(row=0, column=5, padx=(0, 8), sticky="e")
         ttk.Button(buttons, text="Sair", command=self.root.destroy).grid(row=0, column=6, sticky="e")
@@ -453,7 +601,8 @@ class MainWindow:
         center.add(grid_frame, weight=4)
         self._build_subdebito_grid(grid_frame)
 
-        edit_frame = ttk.Labelframe(center, text="Edicao do subdebito selecionado", padding=(8, 6))
+        edit_label = self._section_label_with_help(center, "Edicao do subdebito selecionado", SUBDEBIT_EDITOR_TOOLTIP)
+        edit_frame = ttk.Labelframe(center, labelwidget=edit_label, padding=(8, 6))
         center.add(edit_frame, weight=2)
         self._build_subdebito_editor(edit_frame)
 
@@ -502,7 +651,11 @@ class MainWindow:
             colspan = pos["colspan"]
             
             lbl_text = f"{label}*" if field_name in mandatory_fields else label
-            ttk.Label(parent, text=lbl_text).grid(row=row, column=col, sticky="w", padx=4, pady=2)
+            tooltip = CASE_FIELD_TOOLTIPS.get(field_name)
+            if tooltip:
+                self._label_with_help(parent, lbl_text, tooltip, row, col)
+            else:
+                ttk.Label(parent, text=lbl_text).grid(row=row, column=col, sticky="w", padx=4, pady=2)
             
             if field_name == "tipo_parcela":
                 entry = ttk.Combobox(
@@ -553,11 +706,13 @@ class MainWindow:
                 entry.bind("<FocusOut>", self.on_bloco_geral_focus_out)
                 entry.bind("<FocusIn>", self.on_select_all_entry)
                 entry.bind("<ButtonRelease-1>", self.on_select_all_entry)
-                ttk.Button(
+                distribute_btn = ttk.Button(
                     parent,
                     text="Distribuir Bloqueio",
                     command=self.apply_general_block,
-                ).grid(row=row, column=8, sticky="ew", padx=(4, 0), pady=2)
+                )
+                distribute_btn.grid(row=row, column=8, sticky="ew", padx=(4, 0), pady=2)
+                self._attach_tooltip(distribute_btn, CASE_FIELD_TOOLTIPS["valor_bloqueado_geral"])
 
         for _col in range(8):
             parent.columnconfigure(_col, weight=1)
@@ -632,6 +787,7 @@ class MainWindow:
         )
         batch_ug_combo.grid(row=0, column=1, padx=4, pady=2, sticky="ew")
         self.ug_comboboxes.append(batch_ug_combo)
+        self._attach_tooltip(batch_ug_combo, BATCH_CODES_TOOLTIP)
 
         tk.Label(batch_frame, text="Gestao", bg=BATCH_BG).grid(row=0, column=2, padx=4, pady=2, sticky="w")
         tk.Label(batch_frame, textvariable=self.batch_vars["gestao"], bg=BATCH_BG).grid(row=0, column=3, padx=4, pady=2, sticky="w")
@@ -645,20 +801,30 @@ class MainWindow:
         )
         batch_gru_combo.grid(row=0, column=5, padx=4, pady=2, sticky="ew")
         self.gru_comboboxes.append(batch_gru_combo)
-        ttk.Button(batch_frame, text="Aplicar aos selecionados", command=self.apply_batch_codes).grid(
+        self._attach_tooltip(batch_gru_combo, BATCH_CODES_TOOLTIP)
+        apply_codes_btn = ttk.Button(batch_frame, text="Aplicar aos selecionados", command=self.apply_batch_codes)
+        apply_codes_btn.grid(
             row=0,
             column=6,
             padx=8,
             pady=2,
         )
+        self._attach_tooltip(apply_codes_btn, BATCH_CODES_TOOLTIP)
 
-        tk.Label(
+        self._label_with_help(
             batch_frame,
-            text="Selecione os codigos UG/Gestao e GRU(CR), nas listas suspensas.",
-            bg=BATCH_BG,
-        ).grid(row=1, column=0, columnspan=8, sticky="w", padx=4, pady=(4, 0))
+            "Selecione os codigos UG/Gestao e GRU(CR), nas listas suspensas.",
+            BATCH_CODES_TOOLTIP,
+            row=1,
+            column=0,
+            columnspan=8,
+            padx=4,
+            pady=(4, 0),
+            background=BATCH_BG,
+        )
 
-        summary_frame = ttk.Labelframe(parent, text="Débitos consolidados", padding=(8, 6))
+        summary_label = self._section_label_with_help(parent, "Débitos consolidados", SUMMARY_TOOLTIP)
+        summary_frame = ttk.Labelframe(parent, labelwidget=summary_label, padding=(8, 6))
         summary_frame.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         summary_frame.columnconfigure(0, weight=1)
         self.summary_tree = ttk.Treeview(
@@ -1069,7 +1235,7 @@ class MainWindow:
 
     def generate_proposal(self) -> None:
         self.sync_case_from_form()
-        errors = self.case_data.validate()
+        errors = self.case_data.validate(strict_proposal=True)
         if errors:
             messagebox.showwarning("Validacoes pendentes", "\n".join(errors))
             return
@@ -1211,6 +1377,9 @@ class MainWindow:
         entries_by_code: dict[str, dict[str, tk.Entry]] = {}
         normal_font = tkfont.Font(family="Segoe UI", size=9)
         changed_font = tkfont.Font(family="Segoe UI", size=9, weight="bold")
+        reset_button_disabled_font = tkfont.Font(family="Segoe UI", size=9)
+        reset_button_enabled_font = tkfont.Font(family="Segoe UI", size=9, weight="bold")
+        reset_button: tk.Button | None = None
         default_data_primeira_com_entrada = self._default_first_installment_after_entry()
         data_primeira_com_entrada_var = tk.StringVar(
             value=self.case_data.data_primeira_parcela_com_entrada or default_data_primeira_com_entrada
@@ -1419,11 +1588,12 @@ class MainWindow:
             entry.configure(fg="#b91c1c" if changed else "#111827", font=changed_font if changed else normal_font)
 
         def update_change_styles(*_args) -> None:
+            has_changes = False
             for code, values in vars_by_code.items():
                 scenario = scenario_by_code[code]
                 entries = entries_by_code[code]
+                entrada_editavel = scenario.entrada_minima_percentual > 0 or scenario.codigo in OPTIONAL_ENTRY_CODES
                 try:
-                    entrada_editavel = scenario.entrada_minima_percentual > 0 or scenario.codigo in OPTIONAL_ENTRY_CODES
                     entrada = parse_decimal_input(values["entrada"].get()) if entrada_editavel else scenario.entrada_minima_percentual
                 except ValueError:
                     entrada = None
@@ -1436,14 +1606,51 @@ class MainWindow:
                 except ValueError:
                     parcelas = None
 
-                apply_change_style(entries["entrada"], entrada is not None and abs(entrada - scenario.entrada_minima_percentual) > 0.0001)
-                apply_change_style(entries["desconto"], desconto is not None and abs(desconto - scenario.desconto_percentual) > 0.0001)
-                apply_change_style(entries["parcelas"], parcelas is not None and parcelas != scenario.parcelas)
+                entrada_changed = entrada_editavel and (
+                    abs(entrada - scenario.entrada_minima_percentual) > 0.0001
+                    if entrada is not None
+                    else values["entrada"].get().strip() != format_decimal_br(scenario.entrada_minima_percentual)
+                )
+                desconto_changed = scenario.desconto_percentual > 0 and (
+                    abs(desconto - scenario.desconto_percentual) > 0.0001
+                    if desconto is not None
+                    else values["desconto"].get().strip() != format_decimal_br(scenario.desconto_percentual)
+                )
+                parcelas_changed = scenario.parcelas > 1 and (
+                    parcelas != scenario.parcelas
+                    if parcelas is not None
+                    else values["parcelas"].get().strip() != str(scenario.parcelas)
+                )
+
+                apply_change_style(entries["entrada"], entrada_changed)
+                apply_change_style(entries["desconto"], desconto_changed)
+                apply_change_style(entries["parcelas"], parcelas_changed)
+                has_changes = has_changes or entrada_changed or desconto_changed or parcelas_changed
             if data_primeira_com_entrada_entry is not None:
+                data_primeira_com_entrada_changed = (
+                    data_primeira_com_entrada_var.get().strip() != default_data_primeira_com_entrada
+                )
                 apply_change_style(
                     data_primeira_com_entrada_entry,
-                    data_primeira_com_entrada_var.get().strip() != default_data_primeira_com_entrada,
+                    data_primeira_com_entrada_changed,
                 )
+                has_changes = has_changes or data_primeira_com_entrada_changed
+            if reset_button is not None:
+                if has_changes:
+                    reset_button.configure(
+                        state="normal",
+                        fg=RESET_DEFAULTS_FG,
+                        activeforeground=RESET_DEFAULTS_FG,
+                        font=reset_button_enabled_font,
+                    )
+                else:
+                    reset_button.configure(
+                        state="disabled",
+                        fg=RESET_DEFAULTS_DISABLED_FG,
+                        activeforeground=RESET_DEFAULTS_DISABLED_FG,
+                        disabledforeground=RESET_DEFAULTS_DISABLED_FG,
+                        font=reset_button_disabled_font,
+                    )
 
         for values in vars_by_code.values():
             for var in values.values():
@@ -1518,11 +1725,22 @@ class MainWindow:
         buttons = ttk.Frame(main)
         buttons.pack(fill="x", pady=(10, 0))
         ttk.Button(buttons, text="Voltar", command=dialog.destroy).pack(side="left")
-        ttk.Button(
+        reset_button = tk.Button(
             buttons,
-            text="Resetar alteracoes (voltar ao padrao geral)",
+            text=RESET_DEFAULTS_TEXT,
             command=reset_to_defaults,
-        ).pack(side="left", padx=(10, 0))
+            fg=RESET_DEFAULTS_DISABLED_FG,
+            activeforeground=RESET_DEFAULTS_DISABLED_FG,
+            disabledforeground=RESET_DEFAULTS_DISABLED_FG,
+            bg=RESET_DEFAULTS_BUTTON_BG,
+            activebackground=RESET_DEFAULTS_BUTTON_BG,
+            relief="raised",
+            bd=1,
+            padx=8,
+            pady=2,
+        )
+        reset_button.pack(side="left", padx=(10, 0))
+        update_change_styles()
         ttk.Button(buttons, text="Avancar para resumo", command=confirm).pack(side="right")
 
         self.root.wait_window(dialog)

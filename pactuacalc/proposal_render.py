@@ -149,16 +149,34 @@ class ProposalPdfLayout:
         self.pdf = pdf
         self.cursor_y = PAGE_HEIGHT - MARGIN_Y
 
+    def remaining_space(self) -> float:
+        return self.cursor_y - MARGIN_Y
+
+    def page_break(self) -> None:
+        self.pdf.new_page()
+        self.cursor_y = PAGE_HEIGHT - MARGIN_Y
+
     def ensure_space(self, height: float) -> None:
         if self.cursor_y - height < MARGIN_Y:
-            self.pdf.new_page()
-            self.cursor_y = PAGE_HEIGHT - MARGIN_Y
+            self.page_break()
+
+    def ensure_block(self, height: float) -> None:
+        page_content_height = PAGE_HEIGHT - (MARGIN_Y * 2)
+        if height <= page_content_height and self.remaining_space() < height:
+            self.page_break()
 
     @staticmethod
     def estimate_width(text: str, font_size: float) -> float:
         return len(text) * font_size * 0.54
 
     def wrap(self, text: str, width: float, font_size: float) -> list[str]:
+        source_lines = text.splitlines() or [""]
+        wrapped_lines: list[str] = []
+        for source_line in source_lines:
+            wrapped_lines.extend(self._wrap_single_line(source_line, width, font_size))
+        return wrapped_lines
+
+    def _wrap_single_line(self, text: str, width: float, font_size: float) -> list[str]:
         words = text.split()
         if not words:
             return [""]
@@ -174,12 +192,22 @@ class ProposalPdfLayout:
         lines.append(current)
         return lines
 
-    def block_title(self, title: str, fill: tuple[float, float, float], height: float = 18.0) -> None:
+    def block_title(
+        self,
+        title: str,
+        fill: tuple[float, float, float],
+        height: float = 18.0,
+        text_color: tuple[float, float, float] = (0, 0, 0),
+        stroke: tuple[float, float, float] = (0.4, 0.4, 0.4),
+    ) -> None:
         self.ensure_space(height + 8)
         y = self.cursor_y - height
-        self.pdf.rect(MARGIN_X, y, PAGE_WIDTH - (MARGIN_X * 2), height, fill=fill, stroke=(0.4, 0.4, 0.4))
-        self.pdf.text(MARGIN_X + 6, y + 5, title, size=12, font="F2")
+        self.pdf.rect(MARGIN_X, y, PAGE_WIDTH - (MARGIN_X * 2), height, fill=fill, stroke=stroke)
+        self.pdf.text(MARGIN_X + 6, y + 5, title, size=12, font="F2", color=text_color)
         self.cursor_y = y - 6
+
+    def block_title_height(self, height: float = 18.0) -> float:
+        return height + 6
 
     def paragraph(
         self,
@@ -193,13 +221,26 @@ class ProposalPdfLayout:
     ) -> None:
         width = PAGE_WIDTH - (MARGIN_X * 2) - indent
         lines = self.wrap(text, width, size)
-        self.ensure_space(len(lines) * leading + 2)
+        total_height = (len(lines) * leading) + 2
+        if total_height <= self.remaining_space():
+            self.ensure_space(total_height)
         for index, line in enumerate(lines):
+            self.ensure_space(leading + 2)
             rendered = line
             if justify and index < len(lines) - 1:
                 rendered = self.justified_text(line, width, size)
             self.pdf.text(MARGIN_X + indent, self.cursor_y - size, rendered, size=size, font=font, color=color)
             self.cursor_y -= leading
+
+    def paragraph_height(
+        self,
+        text: str,
+        size: float = 9.0,
+        leading: float = 12.0,
+        indent: float = 0.0,
+    ) -> float:
+        width = PAGE_WIDTH - (MARGIN_X * 2) - indent
+        return (len(self.wrap(text, width, size)) * leading) + 2
 
     def key_value_grid(self, items: list[tuple[str, str] | tuple[str, str, tuple[float, float, float]]]) -> None:
         col_width = (PAGE_WIDTH - (MARGIN_X * 2)) / 2
@@ -248,10 +289,10 @@ class ProposalPdfLayout:
         box_height = 28
         self.ensure_space(box_height + 8)
         y = self.cursor_y - box_height
-        self.pdf.rect(MARGIN_X, y, PAGE_WIDTH - (MARGIN_X * 2), box_height, fill=(0.89, 0.95, 0.87), stroke=(0.25, 0.45, 0.25))
-        self.pdf.text(MARGIN_X + 8, y + 8, label, size=12, font="F2", color=(0.07, 0.32, 0.14))
+        self.pdf.rect(MARGIN_X, y, PAGE_WIDTH - (MARGIN_X * 2), box_height, fill=(0.94, 0.95, 0.96), stroke=(0.38, 0.45, 0.55))
+        self.pdf.text(MARGIN_X + 8, y + 8, label, size=12, font="F2", color=(0.07, 0.18, 0.31))
         width = self.estimate_width(value, 16)
-        self.pdf.text(PAGE_WIDTH - MARGIN_X - width - 8, y + 6, value, size=16, font="F2", color=(0.07, 0.32, 0.14))
+        self.pdf.text(PAGE_WIDTH - MARGIN_X - width - 8, y + 6, value, size=16, font="F2", color=(0.07, 0.18, 0.31))
         self.cursor_y = y - 8
 
     def callout(
@@ -304,46 +345,123 @@ class ProposalPdfLayout:
         font_size: float = 8.4,
         row_padding: float = 4.0,
         total_row_indices: set[int] | None = None,
+        alternate_row_fill: tuple[float, float, float] | None = None,
+        total_fill: tuple[float, float, float] = (0.93, 0.95, 0.98),
+        header_text_color: tuple[float, float, float] = (0.08, 0.14, 0.22),
+        split_across_pages: bool = True,
     ) -> None:
         total_row_indices = total_row_indices or set()
         x_positions = [MARGIN_X]
         for width in widths[:-1]:
             x_positions.append(x_positions[-1] + width)
 
-        def row_height(row: list[str], is_header: bool = False) -> float:
-            max_lines = 1
-            for text, width in zip(row, widths):
-                wrapped = self.wrap(text, width - 6, font_size + (0.2 if is_header else 0.0))
-                max_lines = max(max_lines, len(wrapped))
-            return (max_lines * (font_size + 2.2)) + row_padding
+        header_height = self.table_row_height(headers, widths, font_size, row_padding, is_header=True)
+        all_row_heights = [self.table_row_height(row, widths, font_size, row_padding) for row in rows]
+        total_height = header_height + sum(all_row_heights) + 6
 
-        header_height = row_height(headers, is_header=True)
-        all_row_heights = [row_height(row) for row in rows]
-        self.ensure_space(header_height + sum(all_row_heights) + 6)
+        if split_across_pages:
+            page_content_height = PAGE_HEIGHT - (MARGIN_Y * 2)
+            if total_height <= page_content_height and self.remaining_space() < total_height:
+                self.page_break()
+        else:
+            self.ensure_space(total_height)
 
         current_y = self.cursor_y
-        self.pdf.rect(MARGIN_X, current_y - header_height, sum(widths), header_height, fill=header_fill, stroke=(0.5, 0.5, 0.5))
-        for x in x_positions[1:]:
-            self.pdf.line(x, current_y, x, current_y - header_height, color=(0.6, 0.6, 0.6), line_width=0.6)
-        for idx, header in enumerate(headers):
-            wrapped = self.wrap(header, widths[idx] - 6, font_size + 0.2)
-            line_y = current_y - 10
-            for line in wrapped:
-                self.pdf.text(x_positions[idx] + 3, line_y, line, size=font_size + 0.2, font="F2")
-                line_y -= font_size + 2.2
-        current_y -= header_height
 
-        for row_index, (row, height) in enumerate(zip(rows, all_row_heights)):
-            fill = (0.97, 0.97, 0.97) if row_index in total_row_indices else row_fill
-            self.pdf.rect(MARGIN_X, current_y - height, sum(widths), height, fill=fill, stroke=(0.75, 0.75, 0.75), line_width=0.5)
+        def draw_header(at_y: float) -> float:
+            self.pdf.rect(
+                MARGIN_X,
+                at_y - header_height,
+                sum(widths),
+                header_height,
+                fill=header_fill,
+                stroke=(0.38, 0.45, 0.55),
+                line_width=0.6,
+            )
             for x in x_positions[1:]:
-                self.pdf.line(x, current_y, x, current_y - height, color=(0.82, 0.82, 0.82), line_width=0.4)
+                self.pdf.line(x, at_y, x, at_y - header_height, color=(0.72, 0.77, 0.84), line_width=0.45)
+            for idx, header in enumerate(headers):
+                wrapped = self.wrap(header, widths[idx] - 6, font_size + 0.2)
+                line_y = at_y - 10
+                for line in wrapped:
+                    self.pdf.text(
+                        x_positions[idx] + 3,
+                        line_y,
+                        line,
+                        size=font_size + 0.2,
+                        font="F2",
+                        color=header_text_color,
+                    )
+                    line_y -= font_size + 2.2
+            return at_y - header_height
+
+        def draw_row(row: list[str], row_index: int, height: float, at_y: float) -> float:
+            if row_index in total_row_indices:
+                fill = total_fill
+            elif alternate_row_fill is not None and row_index % 2 == 1:
+                fill = alternate_row_fill
+            else:
+                fill = row_fill
+            self.pdf.rect(
+                MARGIN_X,
+                at_y - height,
+                sum(widths),
+                height,
+                fill=fill,
+                stroke=(0.76, 0.80, 0.86),
+                line_width=0.45,
+            )
+            for x in x_positions[1:]:
+                self.pdf.line(x, at_y, x, at_y - height, color=(0.84, 0.87, 0.91), line_width=0.35)
             for idx, cell in enumerate(row):
                 wrapped = self.wrap(cell, widths[idx] - 6, font_size)
-                line_y = current_y - 10
+                line_y = at_y - 10
                 font = "F2" if row_index in total_row_indices else "F1"
+                color = (0.08, 0.14, 0.22) if row_index in total_row_indices else (0.11, 0.13, 0.16)
                 for line in wrapped:
-                    self.pdf.text(x_positions[idx] + 3, line_y, line, size=font_size, font=font)
+                    self.pdf.text(x_positions[idx] + 3, line_y, line, size=font_size, font=font, color=color)
                     line_y -= font_size + 2.2
-            current_y -= height
+            return at_y - height
+
+        if split_across_pages:
+            first_row_height = all_row_heights[0] if all_row_heights else 0
+            self.ensure_space(header_height + first_row_height + 6)
+            current_y = self.cursor_y
+
+        current_y = draw_header(current_y)
+
+        for row_index, (row, height) in enumerate(zip(rows, all_row_heights)):
+            if split_across_pages and current_y - height < MARGIN_Y:
+                self.cursor_y = current_y
+                self.page_break()
+                current_y = draw_header(self.cursor_y)
+            current_y = draw_row(row, row_index, height, current_y)
+
         self.cursor_y = current_y - 6
+
+    def table_row_height(
+        self,
+        row: list[str],
+        widths: list[float],
+        font_size: float = 8.4,
+        row_padding: float = 4.0,
+        is_header: bool = False,
+    ) -> float:
+        max_lines = 1
+        adjusted_size = font_size + (0.2 if is_header else 0.0)
+        for text, width in zip(row, widths):
+            wrapped = self.wrap(text, width - 6, adjusted_size)
+            max_lines = max(max_lines, len(wrapped))
+        return (max_lines * (font_size + 2.2)) + row_padding
+
+    def table_height(
+        self,
+        headers: list[str],
+        rows: list[list[str]],
+        widths: list[float],
+        font_size: float = 8.4,
+        row_padding: float = 4.0,
+    ) -> float:
+        header_height = self.table_row_height(headers, widths, font_size, row_padding, is_header=True)
+        row_heights = [self.table_row_height(row, widths, font_size, row_padding) for row in rows]
+        return header_height + sum(row_heights) + 6

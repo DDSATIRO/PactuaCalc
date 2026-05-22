@@ -104,15 +104,31 @@ OBSERVACOES_PROPOSTA = (
     "OBSERVAÇÕES: A presente proposta foi elaborada com base nos cálculos de atualização da dívida, conforme demonstrativos em anexo, e não vincula a UNIÃO "
     "em razão de eventual erro material na referida conta, assim como de preenchimento ou de eventual equívoco na indicação dos valores apontados neste resumo "
     "de proposta, sendo possível a sua correção a qualquer tempo. Em caso de dúvidas, o devedor deverá entrar em contato com pru5.corat-acordos@agu.gov.br, "
-    "para onde deve também ser enviada a sua opção de escolha até a DATA LIMITE PARA RESPOSTA (ver acima)."
+    "para onde deve também ser enviada a sua opção de escolha até a DATA LIMITE PARA RESPOSTA (ver quadro inicial)."
 )
 
 
 ATENCAO_PROPOSTA = (
-    "ATENÇÃO: Conforme informação do quadro ao lado, os valores das parcelas constantes das opções abaixo devem ser atualizados mensalmente. "
+    "ATENÇÃO: Os valores das parcelas constantes das opções na modalidade variável devem ser atualizados mensalmente. "
     "E, quando se trate de modalidade de parcelamento FIXO (parcela pré-fixada), os valores dessas parcelas serão RECALCULADOS no SISTEMA PARCELA PGU, "
-    "com base na SELIC MÉDIA MENSAL dos últimos doze meses e APRESENTADOS no TERMO DE PARCELAMENTO A SER ENVIADO AO DEVEDOR."
+    "com base na SELIC MÉDIA MENSAL dos últimos doze meses e podem apresentar pequenas diferenças no TERMO DE PARCELAMENTO a ser enviado ao devedor."
 )
+
+COLOR_INK = (0.08, 0.12, 0.18)
+COLOR_NAVY = (0.07, 0.18, 0.31)
+COLOR_SECTION_FILL = (0.94, 0.95, 0.96)
+COLOR_PANEL_FILL = (0.96, 0.97, 0.98)
+COLOR_ALERT_FILL = (0.98, 0.95, 0.90)
+COLOR_NOTE_TEXT = (0.36, 0.29, 0.18)
+COLOR_RESULT_TEXT = COLOR_NAVY
+COLOR_RED_TEXT = (0.70, 0.08, 0.08)
+COLOR_TABLE_HEADER = (0.93, 0.94, 0.96)
+COLOR_TABLE_ALT = (0.99, 0.99, 0.99)
+COLOR_TABLE_TOTAL = (0.94, 0.95, 0.94)
+COLOR_OPTION_FILL = COLOR_SECTION_FILL
+
+SCENARIO_TABLE_WIDTHS = [170, 114, 90, 78, 86, 84, 84, 88]
+SELIC_NOTE_SPACING = 8.0
 
 
 def _round_distribution(values: list[float], total: float) -> list[float]:
@@ -519,7 +535,13 @@ def build_proposal_scenarios(
 
 
 def _render_header(layout: ProposalPdfLayout, case_data: CaseData, consolidated: list[Subdebito]) -> None:
-    layout.block_title("QUADRO DEMONSTRATIVO DE OPÇÕES DE PAGAMENTO", fill=(0.90, 0.93, 0.96))
+    layout.block_title(
+        "SIMULAÇÃO DE OPÇÕES DE ACORDO",
+        fill=COLOR_NAVY,
+        height=22,
+        text_color=(1.0, 1.0, 1.0),
+        stroke=COLOR_NAVY,
+    )
     import getpass
     usuario_os = getpass.getuser()
 
@@ -531,8 +553,8 @@ def _render_header(layout: ProposalPdfLayout, case_data: CaseData, consolidated:
             ("CPF/CNPJ", case_data.cpf_cnpj),
             ("Competência", case_data.competencia_atualizacao or "-"),
             ("Atualizado em", case_data.data_atualizacao or "-"),
-            ("Data Limite para Resposta", case_data.data_limite_resposta or "-", (0.76, 0.08, 0.08)),
-            ("Data da entrada/primeira parcela", case_data.data_primeira_parcela or "-", (0.76, 0.08, 0.08)),
+            ("Data Limite para Resposta", case_data.data_limite_resposta or "-", COLOR_RED_TEXT),
+            ("Data da entrada/primeira parcela", case_data.data_primeira_parcela or "-", COLOR_RED_TEXT),
             ("Multa", format_percent_br(case_data.multa_percentual)),
             ("Usuario", usuario_os),
         ]
@@ -542,7 +564,7 @@ def _render_header(layout: ProposalPdfLayout, case_data: CaseData, consolidated:
             f"Condições adicionais: {case_data.condicoes_adicionais}",
             size=10,
             font="F2",
-            color=(0.76, 0.08, 0.08),
+            color=COLOR_RED_TEXT,
             leading=14,
         )
         layout.cursor_y -= 4
@@ -551,7 +573,12 @@ def _render_header(layout: ProposalPdfLayout, case_data: CaseData, consolidated:
 
 
 def _render_consolidated_table(layout: ProposalPdfLayout, consolidated: list[Subdebito]) -> None:
-    layout.block_title("TOTAL DEVIDO POR CODIGOS CONSOLIDADOS", fill=(0.88, 0.94, 0.88))
+    layout.block_title(
+        "DÍVIDA CONSOLIDADA POR CÓDIGO DE ARRECADAÇÃO",
+        fill=COLOR_SECTION_FILL,
+        text_color=COLOR_NAVY,
+        stroke=(0.62, 0.66, 0.72),
+    )
     rows = [
         [
             item.descricao,
@@ -578,9 +605,11 @@ def _render_consolidated_table(layout: ProposalPdfLayout, consolidated: list[Sub
     layout.table(
         headers=["TIPO DE DÉBITO", "UG/GESTÃO", "CR", "ATUALIZADO", "MULTA 523", "VALOR TOTAL", "BLOQ/DEP"],
         rows=rows,
-        widths=[190, 105, 65, 95, 85, 95, 85],
-        header_fill=(0.86, 0.91, 0.86),
+        widths=[235, 110, 70, 105, 90, 105, 79],
+        header_fill=COLOR_TABLE_HEADER,
         row_fill=(0.99, 0.99, 0.99),
+        alternate_row_fill=COLOR_TABLE_ALT,
+        total_fill=COLOR_TABLE_TOTAL,
         total_row_indices={len(rows) - 1},
     )
 
@@ -590,6 +619,8 @@ def _render_deadline_callout(layout: ProposalPdfLayout, case_data: CaseData) -> 
     layout.callout(
         title="OPTE POR UMA DAS OPÇÕES DE PARCELAMENTO OFERTADAS ABAIXO.",
         body="",
+        fill=COLOR_ALERT_FILL,
+        stroke=(0.72, 0.64, 0.52),
         bottom_prefix="RESPONDER OBRIGATORIAMENTE ATÉ ",
         bottom_accent=f"{data_limite}.",
     )
@@ -625,8 +656,7 @@ def _scenario_title_modalidade(scenario: ProposalScenario) -> str:
     return modalidade.upper()
 
 
-def _render_scenario(layout: ProposalPdfLayout, case_data: CaseData, scenario: ProposalScenario, total_divida: float) -> None:
-    color = (0.93, 0.95, 0.84) if scenario.codigo in {"2", "3.A", "3.B"} else (0.97, 0.93, 0.78)
+def _scenario_title(case_data: CaseData, scenario: ProposalScenario) -> str:
     title = f"OPÇÃO {scenario.codigo}: {_scenario_title_modalidade(scenario)}"
     if scenario.parcelas == 1:
         title += " (PARCELA ÚNICA)"
@@ -638,57 +668,56 @@ def _render_scenario(layout: ProposalPdfLayout, case_data: CaseData, scenario: P
         else:
             tipo_str = "FIXAS"
         title += f" ({scenario.parcelas} parcelas {tipo_str})"
-    layout.block_title(title, fill=color)
-    if scenario.adaptada:
-        layout.paragraph(
-            "* opção adaptada ao caso concreto.",
-            size=7,
-            font="F3",
-            leading=8,
-            color=(0.45, 0.18, 0.10),
-        )
+    return title
 
+
+def _scenario_fill(scenario: ProposalScenario) -> tuple[float, float, float]:
+    return COLOR_OPTION_FILL
+
+
+def _scenario_final_text(case_data: CaseData, scenario: ProposalScenario) -> str:
     if case_data.tipo_parcela == "FIXO (PREFIXADO)" and scenario.parcelas > 1:
         total_bloqueado = round(sum(row.valor_bloqueado for row in scenario.rows or []), 2)
         valor_prefixado = total_bloqueado + scenario.entrada_gru + (scenario.valor_parcela * scenario.parcelas)
-        texto_final = f"VALOR FINAL: {format_currency_br(scenario.valor_final)} (valor final considerando parcelas pré-fixadas: {format_currency_br(valor_prefixado)})"
-    else:
-        texto_final = f"VALOR FINAL: {format_currency_br(scenario.valor_final)} (valor sujeito a atualização mensal conforme condições gerais)"
+        return (
+            f"VALOR FINAL: {format_currency_br(scenario.valor_final)} "
+            f"(valor final considerando parcelas pré-fixadas: {format_currency_br(valor_prefixado)})"
+        )
+    return f"VALOR FINAL: {format_currency_br(scenario.valor_final)} (valor sujeito a atualização mensal conforme condições gerais)"
 
-    layout.paragraph(
-        texto_final,
-        size=12,
-        font="F2",
-        color=(0.16, 0.24, 0.14),
-        leading=14,
-    )
-    layout.paragraph(_scenario_subtitle(case_data, scenario, total_divida), size=9, font="F3", leading=11)
-    if scenario.observacao:
-        layout.paragraph(scenario.observacao, size=8.6, leading=10.5, color=(0.30, 0.20, 0.12))
+
+def _scenario_date_text(case_data: CaseData, scenario: ProposalScenario) -> str:
     if scenario.entrada_minima_percentual > 0 and scenario.entrada_gru > 0:
         data_primeira = case_data.data_primeira_parcela or "-"
         data_segunda = (
             case_data.data_primeira_parcela_com_entrada
             or _default_first_installment_after_entry(case_data.data_primeira_parcela)
         )
-        texto_data = f"Data da entrada: {data_primeira}   |   Data da primeira parcela: {data_segunda}"
-    else:
-        texto_data = f"Data da primeira parcela: {case_data.data_primeira_parcela or '-'}"
+        return f"Data da entrada: {data_primeira}   |   Data da primeira parcela: {data_segunda}"
+    return f"Data da primeira parcela: {case_data.data_primeira_parcela or '-'}"
 
-    layout.paragraph(
-        texto_data,
-        size=8.8,
-        font="F2",
-        color=(0.72, 0.12, 0.12),
-    )
-    total_bloqueado_cenario = round(sum(row.valor_bloqueado for row in scenario.rows or []), 2)
-    if total_bloqueado_cenario > 0:
-        layout.paragraph(
-            "Valores bloqueados devem ser assinalados no Parcela PGU com data de aproximadamente 60 dias (mera previsão).",
-            size=8.8,
-            font="F2",
-            color=(0.72, 0.12, 0.12),
-        )
+
+def _scenario_table_headers(case_data: CaseData, scenario: ProposalScenario) -> list[str]:
+    if scenario.parcelas > 1:
+        parcela_tipo = "Pré-fixadas" if case_data.tipo_parcela == "FIXO (PREFIXADO)" else "Variáveis"
+        parcela_header = f"{scenario.parcelas} Parcelas\n{parcela_tipo}"
+    else:
+        parcela_header = "PARCELA"
+
+    entrada_header = f"ENTRADA(GRU)\n({format_percent_br(scenario.entrada_minima_percentual)})"
+    return [
+        "TIPO DE DÉBITO",
+        "UG / GRU",
+        "TOTAL (+Art. 523)",
+        "BLOQ/DEP",
+        entrada_header,
+        f"DESCONTO\n({format_percent_br(scenario.desconto_percentual)})",
+        "SALDO",
+        parcela_header,
+    ]
+
+
+def _scenario_table_rows(scenario: ProposalScenario) -> list[list[str]]:
     rows = [
         [
             row.descricao,
@@ -714,56 +743,153 @@ def _render_scenario(layout: ProposalPdfLayout, case_data: CaseData, scenario: P
             format_currency_br(round(sum(row.parcela for row in scenario.rows or []), 2)),
         ]
     )
-    
-    if scenario.parcelas > 1:
-        parcela_tipo = "Pré-fixadas" if case_data.tipo_parcela == "FIXO (PREFIXADO)" else "Variáveis"
-        parcela_header = f"{scenario.parcelas} Parcelas\n{parcela_tipo}"
-    else:
-        parcela_header = "PARCELA"
-    
-    entrada_header = f"ENTRADA(GRU)\n({format_percent_br(scenario.entrada_minima_percentual)})"
+    return rows
+
+
+def _scenario_block_height(
+    layout: ProposalPdfLayout,
+    case_data: CaseData,
+    scenario: ProposalScenario,
+    total_divida: float,
+    rows: list[list[str]],
+    intro_only: bool = False,
+) -> float:
+    measured_rows = rows[:1] if intro_only else rows
+    height = layout.block_title_height()
+    if scenario.adaptada:
+        height += layout.paragraph_height("* opção adaptada ao caso concreto.", size=7, leading=8)
+    height += layout.paragraph_height(_scenario_final_text(case_data, scenario), size=12, leading=14)
+    height += layout.paragraph_height(_scenario_subtitle(case_data, scenario, total_divida), size=9, leading=11)
+    if scenario.observacao:
+        height += layout.paragraph_height(scenario.observacao, size=8.6, leading=10.5)
+    height += layout.paragraph_height(_scenario_date_text(case_data, scenario), size=8.8, leading=12)
+    if round(sum(row.valor_bloqueado for row in scenario.rows or []), 2) > 0:
+        height += layout.paragraph_height(
+            "Valores bloqueados devem ser assinalados no Parcela PGU com data de aproximadamente 60 dias (mera previsão).",
+            size=8.8,
+            leading=12,
+        )
+    height += layout.table_height(
+        _scenario_table_headers(case_data, scenario),
+        measured_rows,
+        SCENARIO_TABLE_WIDTHS,
+        font_size=7.0,
+        row_padding=4,
+    )
+    if scenario.nota_calculo_selic and not intro_only:
+        height += layout.paragraph_height(scenario.nota_calculo_selic, size=6, leading=7)
+        height += SELIC_NOTE_SPACING
+    return height
+
+
+def _render_scenario(layout: ProposalPdfLayout, case_data: CaseData, scenario: ProposalScenario, total_divida: float) -> None:
+    rows = _scenario_table_rows(scenario)
+    layout.ensure_block(_scenario_block_height(layout, case_data, scenario, total_divida, rows))
+    layout.ensure_block(_scenario_block_height(layout, case_data, scenario, total_divida, rows, intro_only=True))
+
+    layout.block_title(
+        _scenario_title(case_data, scenario),
+        fill=_scenario_fill(scenario),
+        text_color=COLOR_NAVY,
+        stroke=(0.54, 0.61, 0.70),
+    )
+    if scenario.adaptada:
+        layout.paragraph(
+            "* opção adaptada ao caso concreto.",
+            size=7,
+            font="F3",
+            leading=8,
+            color=COLOR_NOTE_TEXT,
+        )
+
+    layout.paragraph(
+        _scenario_final_text(case_data, scenario),
+        size=12,
+        font="F2",
+        color=COLOR_RESULT_TEXT,
+        leading=14,
+    )
+    layout.paragraph(_scenario_subtitle(case_data, scenario, total_divida), size=9, font="F3", leading=11, color=COLOR_INK)
+    if scenario.observacao:
+        layout.paragraph(scenario.observacao, size=8.6, leading=10.5, color=COLOR_NOTE_TEXT)
+
+    layout.paragraph(
+        _scenario_date_text(case_data, scenario),
+        size=8.8,
+        font="F2",
+        color=COLOR_RED_TEXT,
+    )
+    total_bloqueado_cenario = round(sum(row.valor_bloqueado for row in scenario.rows or []), 2)
+    if total_bloqueado_cenario > 0:
+        layout.paragraph(
+            "Valores bloqueados devem ser assinalados no Parcela PGU com data de aproximadamente 60 dias (mera previsão).",
+            size=8.8,
+            font="F2",
+            color=COLOR_RED_TEXT,
+        )
 
     layout.table(
-        headers=[
-            "TIPO DE DÉBITO",
-            "UG / GRU",
-            "TOTAL (+Art. 523)",
-            "BLOQ/DEP",
-            entrada_header,
-            f"DESCONTO\n({format_percent_br(scenario.desconto_percentual)})",
-            "SALDO",
-            parcela_header,
-        ],
+        headers=_scenario_table_headers(case_data, scenario),
         rows=rows,
-        widths=[150, 115, 95, 80, 85, 80, 80, 80],
-        header_fill=(0.98, 0.98, 0.98),
+        widths=SCENARIO_TABLE_WIDTHS,
+        header_fill=COLOR_TABLE_HEADER,
         row_fill=(1.0, 1.0, 1.0),
+        alternate_row_fill=COLOR_TABLE_ALT,
+        total_fill=COLOR_TABLE_TOTAL,
         total_row_indices={len(rows) - 1},
-        font_size=6.8,
-        row_padding=3,
+        font_size=7.0,
+        row_padding=4,
     )
     if scenario.nota_calculo_selic:
         layout.paragraph(
             scenario.nota_calculo_selic,
             size=6,
             leading=7,
-            color=(0.30, 0.20, 0.12),
+            color=COLOR_NOTE_TEXT,
         )
+        layout.cursor_y -= SELIC_NOTE_SPACING
+
+
+def _render_titled_paragraph(
+    layout: ProposalPdfLayout,
+    title: str,
+    text: str,
+    fill: tuple[float, float, float],
+    text_color: tuple[float, float, float] = COLOR_INK,
+    title_color: tuple[float, float, float] = COLOR_NAVY,
+    size: float = 9.2,
+    leading: float = 12.4,
+    font: str = "F1",
+    justify: bool = True,
+) -> None:
+    layout.ensure_block(layout.block_title_height() + layout.paragraph_height(text, size=size, leading=leading))
+    layout.block_title(title, fill=fill, text_color=title_color, stroke=(0.62, 0.68, 0.76))
+    layout.paragraph(text, size=size, font=font, color=text_color, leading=leading, justify=justify)
 
 
 def _render_conditions(layout: ProposalPdfLayout, case_data: CaseData) -> None:
-    layout.block_title("CONDIÇÕES GERAIS", fill=(0.98, 0.94, 0.94))
-    layout.paragraph(CONDICOES_GERAIS, size=9.2, leading=12.4, justify=True)
-    layout.block_title("OBSERVAÇÕES", fill=(0.95, 0.98, 1.0))
-    layout.paragraph(OBSERVACOES_PROPOSTA, size=9.2, leading=12.4, justify=True)
-    layout.block_title("ATENÇÃO", fill=(1.0, 0.93, 0.93))
-    layout.paragraph(
+    _render_titled_paragraph(
+        layout,
+        "CONDIÇÕES GERAIS",
+        CONDICOES_GERAIS,
+        fill=(0.96, 0.94, 0.91),
+    )
+    _render_titled_paragraph(
+        layout,
+        "OBSERVAÇÕES",
+        OBSERVACOES_PROPOSTA,
+        fill=COLOR_PANEL_FILL,
+    )
+    _render_titled_paragraph(
+        layout,
+        "ATENÇÃO",
         ATENCAO_PROPOSTA,
+        fill=(1.0, 0.91, 0.91),
+        text_color=COLOR_RED_TEXT,
+        title_color=COLOR_RED_TEXT,
         size=9.4,
-        font="F2",
-        color=(0.80, 0.05, 0.05),
         leading=12.6,
-        justify=True,
+        font="F2",
     )
 
 
@@ -797,15 +923,6 @@ def create_proposal_pdf(
         from pactuacalc.selic_api import get_last_12_selic_rates
         rates = get_last_12_selic_rates(case_data.data_atualizacao)
         if rates:
-            layout.block_title("MEMÓRIA DE CÁLCULO - SELIC MÉDIA (ÚLTIMOS 12 MESES)", fill=(0.92, 0.92, 0.92))
-            layout.paragraph(
-                "O parcelamento FIXO (pré-fixado) é calculado com base na média aritmética simples "
-                "das últimas 12 taxas mensais da Selic imediatamente anteriores ao mês da atualização da dívida.",
-                size=9,
-                leading=11,
-                color=(0.2, 0.2, 0.2),
-            )
-            layout.cursor_y -= 8
             headers = []
             valores = []
             total_val = 0.0
@@ -820,16 +937,42 @@ def create_proposal_pdf(
             headers.append("Taxa média")
             valores.append(f"{media:.4f}".replace(".", ",") + "%")
             width = 702 / len(headers)
+
+            selic_intro = (
+                "O parcelamento FIXO (pré-fixado) é calculado com base na média aritmética simples "
+                "das últimas 12 taxas mensais da Selic imediatamente anteriores ao mês da atualização da dívida."
+            )
+            layout.ensure_block(
+                layout.block_title_height()
+                + layout.paragraph_height(selic_intro, size=9, leading=11)
+                + layout.table_height(headers, [valores], [width for _ in headers], font_size=6, row_padding=3)
+                + 8
+            )
+            layout.block_title(
+                "MEMÓRIA DE CÁLCULO - SELIC MÉDIA (ÚLTIMOS 12 MESES)",
+                fill=COLOR_SECTION_FILL,
+                text_color=COLOR_NAVY,
+                stroke=(0.54, 0.61, 0.70),
+            )
+            layout.paragraph(
+                selic_intro,
+                size=9,
+                leading=11,
+                color=COLOR_INK,
+            )
+            layout.cursor_y -= 8
             
             layout.table(
                 headers=headers,
                 rows=[valores],
                 widths=[width for _ in headers],
-                header_fill=(0.88, 0.88, 0.88),
+                header_fill=COLOR_TABLE_HEADER,
                 row_fill=(0.98, 0.98, 0.98),
+                total_fill=COLOR_TABLE_TOTAL,
                 font_size=6,
                 row_padding=3,
             )
+            layout.cursor_y -= SELIC_NOTE_SPACING
 
     target = Path(output_path)
     import datetime

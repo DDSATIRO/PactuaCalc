@@ -44,6 +44,13 @@ def test_case_validation_rejects_invalid_dates() -> None:
     assert any("Data limite para resposta" in item for item in errors)
 
 
+def test_case_validation_strict_requires_subdebito() -> None:
+    case = build_valid_case()
+    case.subdebitos = []
+    errors = case.validate(strict_proposal=True)
+    assert any("Inclua ao menos um subdebito" in item for item in errors)
+
+
 def test_distribui_bloqueio_geral_proporcionalmente() -> None:
     case = build_valid_case()
     case.subdebitos.append(
