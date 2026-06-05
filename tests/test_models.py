@@ -177,3 +177,14 @@ def test_split_sections_separa_sucumbencias_de_partes() -> None:
     assert "I - SUCUMBENCIAS" in parsed.sections
     assert "II - TOTALIZACAO" in parsed.sections
 
+
+def test_split_sections_separa_sucumbencias_e_totalizacao_com_numeracao_variavel() -> None:
+    parsed = split_sections(
+        "I - PARTES\nabc\n"
+        "II - SUCUMBÊNCIAS\nsuc\n"
+        "III - TOTALIZAÇÃO\ntotal"
+    )
+
+    assert parsed.sections["I - PARTES"].startswith("I - PARTES")
+    assert parsed.sections["I - SUCUMBENCIAS"].startswith("II - SUCUMBÊNCIAS")
+    assert parsed.sections["II - TOTALIZACAO"].startswith("III - TOTALIZAÇÃO")

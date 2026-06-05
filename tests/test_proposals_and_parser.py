@@ -464,6 +464,47 @@ def test_parse_projef_sucumbencias_sem_honorarios_na_totalizacao_nao_duplica_val
     assert case.multa_percentual == 0.0
 
 
+def test_parse_projef_separa_sucumbencias_e_ignora_valor_certo_descritivo() -> None:
+    import pactuacalc.parser as parser_module
+
+    original = parser_module.extract_text_from_pdf
+    parser_module.extract_text_from_pdf = lambda _path: (
+        "RESUMO DO CÁLCULO\n"
+        "Processo: 0005732-27.2009.4.05.8000\n"
+        "Réu: ESPÓLIO DE JOSÉ MAURÍCIO TENÓRIO (CPF 007.542.424-04)\n"
+        "I - PARTES\n"
+        "Nome Principal corrigido Juros Moratórios Selic Total (R$)\n"
+        "RESSARCIMENTO ERARIO 475.665,50 185.875,81 321.906,00 983.447,31\n"
+        "Total Partes -> 475.665,50 185.875,81 321.906,00 983.447,31\n"
+        "II - SUCUMBÊNCIAS\n"
+        "Descrição Principal corrigido Juros/Selic Total (R$)\n"
+        "Hon. adv. fixados sobre valor certo - 62.100,00 101.035,05 107.856,81 208.891,86\n"
+        "Total de Sucumbências -> 208.891,86\n"
+        "III - TOTALIZAÇÃO\n"
+        "Descrição Total (R$)\n"
+        "SUBTOTAL DA CONTA (I + II) 1.192.339,17\n"
+        "TOTAL DA CONTA EM 01/2026 1.192.339,17\n"
+        "ATUALIZADO ATÉ JANEIRO/2026\n"
+        "Critérios e parâmetros do cálculo\n"
+        "Honorários advocatícios (fixados sobre valor certo). Valor Certo: 62.100,00. "
+        "Data da Fixação: 09/2013. Data de Início de Juros sobre os Honorários: 09/2013.\n"
+        "DEMONSTRATIVO DE PARCELAS\n"
+    )
+    try:
+        case = parse_projef_report(Path("relatorio_projef.pdf"))
+    finally:
+        parser_module.extract_text_from_pdf = original
+
+    assert len(case.subdebitos) == 2
+    assert case.devedor == "ESPÓLIO DE JOSÉ MAURÍCIO TENÓRIO"
+    assert case.subdebitos[0].tipo == "PRINCIPAL"
+    assert case.subdebitos[0].descricao == "RESSARCIMENTO ERARIO"
+    assert case.subdebitos[0].valor_atualizado == 983447.31
+    assert case.subdebitos[1].is_honorarios()
+    assert case.subdebitos[1].descricao == "Hon. adv. fixados sobre valor certo - 62.100,00"
+    assert case.subdebitos[1].valor_atualizado == 208891.86
+
+
 def test_parse_projef_partes_pode_ter_honorarios_na_base_da_multa() -> None:
     import pactuacalc.parser as parser_module
 

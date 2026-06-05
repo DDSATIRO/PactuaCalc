@@ -15,8 +15,11 @@ from pactuacalc.models import HONORARIOS_GRU_CR, CaseData, Subdebito, TcuLancame
 SECTION_PATTERNS = {
     "RESUMO DO CALCULO": [r"(?m)^\s*RESUMO DO C.LCULO"],
     "I - PARTES": [r"(?m)^\s*(?:I\s*-\s*)?PARTES\b"],
-    "I - SUCUMBENCIAS": [r"(?m)^\s*(?:I\s*-\s*)?SUCUMB.NCIAS\b"],
-    "II - TOTALIZACAO": [r"(?:^|[\n\f])\s*(?:II\s*-\s*)?TOTALIZA..O\b", r"(?:^|[\n\f])\s*(?:II\s*-\s*)?TOTALIZACAO\b"],
+    "I - SUCUMBENCIAS": [r"(?m)^\s*(?:[IVXLCDM]+\s*-\s*)?SUCUMB.NCIAS\b"],
+    "II - TOTALIZACAO": [
+        r"(?:^|[\n\f])\s*(?:[IVXLCDM]+\s*-\s*)?TOTALIZA..O\b",
+        r"(?:^|[\n\f])\s*(?:[IVXLCDM]+\s*-\s*)?TOTALIZACAO\b",
+    ],
     "OBSERVACOES DIGITADAS PELO USUARIO": [
         r"OBSERVA..ES DIGITADAS PELO USU.RIO",
         r"OBSERVACOES DIGITADAS PELO USUARIO",
@@ -165,9 +168,9 @@ def split_sections(text: str) -> ParsedSections:
 
 def extract_totalizacao_section(text: str) -> str:
     normalized_text, index_map = normalize_anchor_text_with_index_map(text)
-    match = re.search(r"(?:^|[\n\f])\s*(?:II\s*-\s*)?TOTALIZA..O\b", normalized_text)
+    match = re.search(r"(?:^|[\n\f])\s*(?:[IVXLCDM]+\s*-\s*)?TOTALIZA..O\b", normalized_text)
     if not match:
-        match = re.search(r"(?:^|[\n\f])\s*(?:II\s*-\s*)?TOTALIZACAO\b", normalized_text)
+        match = re.search(r"(?:^|[\n\f])\s*(?:[IVXLCDM]+\s*-\s*)?TOTALIZACAO\b", normalized_text)
     if not match:
         return ""
     start = index_map[match.start()]
@@ -203,6 +206,11 @@ def remove_money_without_percent(line: str) -> str:
 
 
 def clean_partes_description(line: str) -> str:
+    normalized_line = normalize_anchor_text(line)
+    money_matches = list(MONEY_RE.finditer(line))
+    if "VALOR CERTO" in normalized_line and money_matches:
+        return line[: money_matches[0].end()].strip(" -\t")
+
     percent_matches = list(re.finditer(r"\d{1,3},\d{1,4}\s*%?", line))
     calc_percent_matches = [
         match
@@ -239,6 +247,12 @@ def extract_identifier(text: str) -> str:
     if footer_match:
         return footer_match.group(1).lower()
     return ""
+
+
+def clean_projef_devedor(value: str) -> str:
+    cleaned = re.sub(r"\(\s*(?:CPF|CNPJ)\s+[^)]*\)", "", value, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b(?:CPF|CNPJ)\b.*$", "", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip(" -()")
 
 
 def extract_report_date(text: str) -> str:
@@ -294,6 +308,8 @@ def parse_partes_section(section_text: str, processo: str, force_tipo: str | Non
         if (
             "TOTAL PARTES" in normalized_line
             or "TOTAL DE SUCUMBENCIAS" in normalized_line
+            or "SUBTOTAL DA CONTA" in normalized_line
+            or "TOTAL DA CONTA" in normalized_line
             or "PRINCIPAL CORRIGIDO" in normalized_line
             or "JUROS MORATORIOS" in normalized_line
             or "TOTAL (R$)" in normalized_line
@@ -348,7 +364,12 @@ def parse_honorarios(section_text: str) -> Subdebito | None:
         normalized_line = normalize_anchor_text(line)
         if not _is_import_honorarios_text(normalized_line):
             continue
-        if "VALOR DA CAUSA" in normalized_line or re.search(r"\bX\s+\d{1,3},\d{1,4}\s*%?\b", normalized_line):
+        if (
+            "VALOR DA CAUSA" in normalized_line
+            or "VALOR CERTO" in normalized_line
+            or "DATA DA FIXACAO" in normalized_line
+            or re.search(r"\bX\s+\d{1,3},\d{1,4}\s*%?\b", normalized_line)
+        ):
             continue
         money_matches = money_matches_without_percent(line)
         if not money_matches:
@@ -457,7 +478,7 @@ def parse_projef_report(path: str | Path) -> CaseData:
 
     devedor = find_label_value(parsed.raw_text, [r"r[ée]u", r"devedor"])
     if devedor:
-        devedor = devedor.split("CPF")[0].split("CNPJ")[0].strip(" -")
+        devedor = clean_projef_devedor(devedor)
 
     report_date = extract_report_date(parsed.raw_text)
     competencia_atualizacao = competencia_from_date(report_date)
