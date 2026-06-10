@@ -1,7 +1,7 @@
 import os
 import json
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Série 4390: Taxa de juros - Selic acumulada no mês (% a.m.)
 BCB_SELIC_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.4390/dados"
@@ -14,6 +14,7 @@ _APP_DATA_DIR = os.path.join(
 )
 os.makedirs(_APP_DATA_DIR, exist_ok=True)
 FILE_PATH = os.path.join(_APP_DATA_DIR, "selic_history.json")
+RECENT_REFRESH_MONTHS = 3
 
 def load_selic_history():
     """Carrega o histórico local de taxas Selic. Retorna lista vazia se não existir."""
@@ -25,16 +26,34 @@ def load_selic_history():
             print(f"Erro ao carregar o arquivo {FILE_PATH}: {e}")
     return []
 
+def _parse_bcb_date(value):
+    try:
+        return datetime.strptime(value, "%d/%m/%Y")
+    except (TypeError, ValueError):
+        return None
+
 def _get_last_date(history):
     """Retorna a última data salva no histórico ou a data padrão de início."""
     if not history:
         return DATA_INICIAL_PADRAO
-    last_record = history[-1]
-    return last_record.get('data', DATA_INICIAL_PADRAO)
+    dates = [
+        item_date
+        for item in history
+        if (item_date := _parse_bcb_date(item.get('data')))
+    ]
+    if not dates:
+        return DATA_INICIAL_PADRAO
+    return max(dates).strftime("%d/%m/%Y")
+
+def _refresh_start_date(last_date_obj):
+    month_index = (last_date_obj.year * 12) + last_date_obj.month - 1
+    refresh_month_index = month_index - RECENT_REFRESH_MONTHS
+    year, zero_based_month = divmod(refresh_month_index, 12)
+    return datetime(year, zero_based_month + 1, 1)
 
 def update_selic_history():
     """
-    Verifica a última data local e busca as taxas faltantes no BCB até o dia de hoje.
+    Verifica a última data local e atualiza a janela recente da Selic no BCB.
     Salva e retorna o histórico atualizado.
     """
     history = load_selic_history()
@@ -44,15 +63,12 @@ def update_selic_history():
     hoje = datetime.now()
     hoje_str = hoje.strftime("%d/%m/%Y")
     
-    # Se já tivermos dados, pegamos a partir do próximo dia da última data salva.
-    # Como a Selic é mensal, o BCB costuma indexar pela data do primeiro dia do mês.
-    # Mas passar a mesma data da última requisição pode trazer o último mês de novo.
-    # O BCB lida bem com sobreposições, a gente pode filtrar se vier duplicado.
+    # Reconsulta uma janela recente, pois a serie 4390 pode publicar um mes
+    # ainda parcial e completar esse mesmo mes depois.
     if history:
         try:
             last_date_obj = datetime.strptime(last_date_str, "%d/%m/%Y")
-            # Adicionamos 1 dia para não buscar a mesma data
-            start_date_obj = last_date_obj + timedelta(days=1)
+            start_date_obj = _refresh_start_date(last_date_obj)
             data_inicial_busca = start_date_obj.strftime("%d/%m/%Y")
         except ValueError:
             data_inicial_busca = last_date_str
@@ -78,12 +94,20 @@ def update_selic_history():
         new_data = response.json()
         
         if new_data:
-            # Filtra registros que porventura já existam (baseado na data)
-            existing_dates = {item['data'] for item in history}
+            # Faz upsert por data para substituir taxas recentes que mudaram.
+            history_by_date = {
+                item['data']: item
+                for item in history
+                if item.get('data')
+            }
             for item in new_data:
-                if item['data'] not in existing_dates:
-                    history.append(item)
-                    existing_dates.add(item['data'])
+                if item.get('data'):
+                    history_by_date[item['data']] = item
+
+            history = sorted(
+                history_by_date.values(),
+                key=lambda item: _parse_bcb_date(item.get('data')) or datetime.max,
+            )
                     
             # Salva o arquivo atualizado
             with open(FILE_PATH, 'w', encoding='utf-8') as f:
