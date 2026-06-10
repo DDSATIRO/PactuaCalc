@@ -76,6 +76,14 @@ TCU_HISTORY_ROW_RE = re.compile(
     r"(\d{2}/\d{2}/\d{4})\s+([DC])\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})",
     flags=re.IGNORECASE,
 )
+TOTALIZACAO_STOP_MARKERS = (
+    "ATUALIZADO ATE",
+    "CRITERIOS E PARAMETROS DO CALCULO",
+    "CALCULO ELABORADO POR",
+    "GERE NOVAMENTE ESTE CALCULO",
+    "PROJEF WEB",
+    "VERSAO:",
+)
 
 
 @dataclass
@@ -181,6 +189,16 @@ def extract_totalizacao_section(text: str) -> str:
     )
     end = index_map[match.end() + next_match.start()] if next_match else len(text)
     return text[start:end].strip()
+
+
+def trim_totalizacao_table(section_text: str) -> str:
+    lines: list[str] = []
+    for line in section_text.splitlines():
+        normalized_line = normalize_anchor_text(line)
+        if any(marker in normalized_line for marker in TOTALIZACAO_STOP_MARKERS):
+            break
+        lines.append(line)
+    return "\n".join(lines).strip()
 
 
 def parse_brl_money(value: str) -> float:
@@ -357,6 +375,7 @@ def parse_partes_section(section_text: str, processo: str, force_tipo: str | Non
 
 
 def parse_honorarios(section_text: str) -> Subdebito | None:
+    section_text = trim_totalizacao_table(section_text)
     if "honor" not in section_text.lower():
         return None
     lines = [line.strip() for line in section_text.splitlines() if line.strip()]
@@ -367,6 +386,9 @@ def parse_honorarios(section_text: str) -> Subdebito | None:
         if (
             "VALOR DA CAUSA" in normalized_line
             or "VALOR CERTO" in normalized_line
+            or "BASE DE CALCULO" in normalized_line
+            or "CRITERIO DE CORRECAO" in normalized_line
+            or "PERCENTUAL" in normalized_line
             or "DATA DA FIXACAO" in normalized_line
             or re.search(r"\bX\s+\d{1,3},\d{1,4}\s*%?\b", normalized_line)
         ):
@@ -387,6 +409,7 @@ def parse_honorarios(section_text: str) -> Subdebito | None:
 
 
 def parse_totalizacao_values(section_text: str) -> tuple[float, float, float]:
+    section_text = trim_totalizacao_table(section_text)
     subtotal = 0.0
     multa_total = 0.0
     multa_percentual = 0.0
@@ -466,7 +489,9 @@ def parse_projef_report(path: str | Path) -> CaseData:
     resumo = parsed.sections.get("RESUMO DO CALCULO", parsed.raw_text)
     partes = parsed.sections.get("I - PARTES", "")
     sucumbencias = parsed.sections.get("I - SUCUMBENCIAS", "")
-    totalizacao = parsed.sections.get("II - TOTALIZACAO", "") or extract_totalizacao_section(parsed.raw_text)
+    totalizacao = trim_totalizacao_table(
+        parsed.sections.get("II - TOTALIZACAO", "") or extract_totalizacao_section(parsed.raw_text)
+    )
     observacoes = parsed.sections.get("OBSERVACOES DIGITADAS PELO USUARIO", "")
 
     identificador = extract_identifier(parsed.raw_text)

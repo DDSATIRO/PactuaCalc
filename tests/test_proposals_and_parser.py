@@ -505,6 +505,51 @@ def test_parse_projef_separa_sucumbencias_e_ignora_valor_certo_descritivo() -> N
     assert case.subdebitos[1].valor_atualizado == 208891.86
 
 
+def test_parse_projef_nao_cria_honorarios_com_base_de_calculo_dos_criterios() -> None:
+    import pactuacalc.parser as parser_module
+
+    original = parser_module.extract_text_from_pdf
+    parser_module.extract_text_from_pdf = lambda _path: (
+        "RESUMO DO CALCULO\n"
+        "Processo: 0802410-17.2024.4.05.8201\n"
+        "I - PARTES\n"
+        "Nome Principal corrigido Juros Moratorios Selic Total (R$)\n"
+        "Restituicao - Energia Eletrica - TRE-PB 29.081,31 0,00 22.905,73 51.987,04\n"
+        "Total Partes -> 29.081,31 0,00 22.905,73 51.987,04\n"
+        "II - SUCUMBENCIAS\n"
+        "Descricao Principal corrigido Juros/Selic Total (R$)\n"
+        "Hon. adv. fixados sobre valor da condenacao - 51.987,04 x 10,00% 2.908,13 2.290,57 5.198,70\n"
+        "Total de Sucumbencias -> 5.198,70\n"
+        "III - TOTALIZACAO\n"
+        "Descricao Total (R$)\n"
+        "SUBTOTAL DA CONTA (I + II) 57.185,74\n"
+        "TOTAL DA CONTA EM 06/2026 57.185,74\n"
+        "ATUALIZADO ATE JUNHO/2026\n"
+        "Criterios e parametros do calculo\n"
+        "Honorarios advocaticios (fixados sobre o valor da condenacao) Percentual 10,00%. "
+        "Base de calculo dos honorarios de sucumbencia: R$ 51.987,04.\n"
+    )
+    try:
+        case = parse_projef_report(Path("relatorio_projef.pdf"))
+    finally:
+        parser_module.extract_text_from_pdf = original
+
+    assert len(case.subdebitos) == 2
+    assert case.subdebitos[0].tipo == "PRINCIPAL"
+    assert case.subdebitos[0].valor_atualizado == 51987.04
+    assert case.subdebitos[1].is_honorarios()
+    assert case.subdebitos[1].valor_atualizado == 5198.70
+
+
+def test_parser_honorarios_ignora_base_de_calculo_textual() -> None:
+    item = parse_honorarios(
+        "Honorarios advocaticios (fixados sobre o valor da condenacao) Percentual 10,00%. "
+        "Base de calculo dos honorarios de sucumbencia: R$ 51.987,04."
+    )
+
+    assert item is None
+
+
 def test_parse_projef_partes_pode_ter_honorarios_na_base_da_multa() -> None:
     import pactuacalc.parser as parser_module
 

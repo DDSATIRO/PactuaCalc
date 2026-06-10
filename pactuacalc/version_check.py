@@ -9,7 +9,7 @@ Se nao houver internet, o app abre normalmente (degradacao graciosa).
 
 from __future__ import annotations
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 
 _VERSION_URL = (
     "https://raw.githubusercontent.com/DDSATIRO/PactuaCalc/main/version.json"
