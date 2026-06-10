@@ -531,7 +531,7 @@ class MainWindow:
         ttk.Label(top, text="PactuaCalc", style="Brand.TLabel").grid(row=0, column=1, sticky="sw")
         ttk.Label(
             top,
-            text="Cálculos e propostas para negociação de dívidas — Versão 1.0.1 - 10/06/2026 (favor verificar cálculos e regras e, se for o caso, contatar o desenvolvedor)",
+            text="Cálculos e propostas para negociação de dívidas — Versão 1.0.2 - 10/06/2026 (favor verificar cálculos e regras e, se for o caso, contatar o desenvolvedor)",
             style="Subtitle.TLabel",
         ).grid(row=1, column=1, sticky="nw", pady=(1, 0))
 
