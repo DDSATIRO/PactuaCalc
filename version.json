@@ -1,6 +1,8 @@
 {
-    "min_version": "1.0.0",
-    "latest_version": "1.0.2",
-    "blocked_versions": [],
-    "mensagem": ""
+    "min_version":  "1.0.0",
+    "latest_version":  "1.0.3",
+    "blocked_versions":  [
+
+                         ],
+    "mensagem":  ""
 }

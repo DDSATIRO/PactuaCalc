@@ -9,7 +9,7 @@ Se nao houver internet, o app abre normalmente (degradacao graciosa).
 
 from __future__ import annotations
 
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 
 _VERSION_URL = (
     "https://raw.githubusercontent.com/DDSATIRO/PactuaCalc/main/version.json"
@@ -27,15 +27,15 @@ def _parse_version(v: str) -> tuple[int, ...]:
 def verificar_versao() -> tuple[bool, str, str]:
     """Retorna (permitido, mensagem_bloqueio, aviso_nova_versao).
 
-    - permitido=True  → app pode abrir normalmente.
-    - permitido=False → app deve exibir a mensagem_bloqueio e encerrar.
-    - aviso_nova_versao → texto informativo (nao bloqueante) se houver
+    - permitido=True  â†’ app pode abrir normalmente.
+    - permitido=False â†’ app deve exibir a mensagem_bloqueio e encerrar.
+    - aviso_nova_versao â†’ texto informativo (nao bloqueante) se houver
       versao mais recente disponivel. Vazio se estiver em dia.
 
     Regras aplicadas em ordem:
-      1. Se APP_VERSION < min_version          → bloqueado (muito antigo)
-      2. Se APP_VERSION em blocked_versions    → bloqueado (versao com bug)
-      3. Se APP_VERSION < latest_version       → aviso gentil (nao bloqueia)
+      1. Se APP_VERSION < min_version          â†’ bloqueado (muito antigo)
+      2. Se APP_VERSION em blocked_versions    â†’ bloqueado (versao com bug)
+      3. Se APP_VERSION < latest_version       â†’ aviso gentil (nao bloqueia)
     """
     try:
         import json
@@ -67,7 +67,7 @@ def verificar_versao() -> tuple[bool, str, str]:
             )
             return False, msg, ""
 
-        # Regra 3: aviso gentil — ha versao mais nova, mas esta funciona
+        # Regra 3: aviso gentil â€” ha versao mais nova, mas esta funciona
         aviso = ""
         if _parse_version(APP_VERSION) < _parse_version(latest_version):
             aviso = (

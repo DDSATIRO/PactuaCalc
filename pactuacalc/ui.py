@@ -30,6 +30,7 @@ from pactuacalc.services import (
     total_bloqueado_efetivo,
 )
 from pactuacalc.tcuweb import TcuAutomationError, atualizar_relatorio_tcu
+from pactuacalc.version_check import APP_VERSION
 
 
 CASE_FIELDS = [
@@ -531,7 +532,7 @@ class MainWindow:
         ttk.Label(top, text="PactuaCalc", style="Brand.TLabel").grid(row=0, column=1, sticky="sw")
         ttk.Label(
             top,
-            text="Cálculos e propostas para negociação de dívidas — Versão 1.0.2 - 10/06/2026 (favor verificar cálculos e regras e, se for o caso, contatar o desenvolvedor)",
+            text=f"Cálculos e propostas para negociação de dívidas — Versão {APP_VERSION} (favor verificar cálculos e regras e, se for o caso, contatar o desenvolvedor)",
             style="Subtitle.TLabel",
         ).grid(row=1, column=1, sticky="nw", pady=(1, 0))
 
