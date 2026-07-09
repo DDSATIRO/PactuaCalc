@@ -167,7 +167,19 @@ class ProposalPdfLayout:
 
     @staticmethod
     def estimate_width(text: str, font_size: float) -> float:
-        return len(text) * font_size * 0.54
+        width_units = 0.0
+        for char in text:
+            if char.isspace():
+                width_units += 0.32
+            elif char in "ilI.,;:'|!":
+                width_units += 0.34
+            elif char in "MW@#%&":
+                width_units += 0.82
+            elif char.isupper() or char.isdigit():
+                width_units += 0.64
+            else:
+                width_units += 0.54
+        return width_units * font_size
 
     def wrap(self, text: str, width: float, font_size: float) -> list[str]:
         source_lines = text.splitlines() or [""]
@@ -180,9 +192,13 @@ class ProposalPdfLayout:
         words = text.split()
         if not words:
             return [""]
+        normalized_words: list[str] = []
+        for word in words:
+            normalized_words.extend(self._split_long_word(word, width, font_size))
+
         lines: list[str] = []
-        current = words[0]
-        for word in words[1:]:
+        current = normalized_words[0]
+        for word in normalized_words[1:]:
             trial = f"{current} {word}"
             if self.estimate_width(trial, font_size) <= width:
                 current = trial
@@ -191,6 +207,22 @@ class ProposalPdfLayout:
                 current = word
         lines.append(current)
         return lines
+
+    def _split_long_word(self, word: str, width: float, font_size: float) -> list[str]:
+        if self.estimate_width(word, font_size) <= width:
+            return [word]
+        chunks: list[str] = []
+        current = ""
+        for char in word:
+            trial = current + char
+            if current and self.estimate_width(trial, font_size) > width:
+                chunks.append(current)
+                current = char
+            else:
+                current = trial
+        if current:
+            chunks.append(current)
+        return chunks or [word]
 
     def block_title(
         self,

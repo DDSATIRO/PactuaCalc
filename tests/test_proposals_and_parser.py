@@ -21,6 +21,7 @@ from pactuacalc.parser import (
 )
 from pactuacalc.projefweb import competencia_esta_defasada
 import pactuacalc.proposals as proposals
+from pactuacalc.proposal_render import PAGE_WIDTH, MARGIN_X, ProposalPdfLayout, SimplePdf
 from pactuacalc.proposals import _scenario_title_modalidade, build_proposal_scenarios, create_proposal_pdf
 from pactuacalc.services import merge_case_data, replace_tcu_case_data
 
@@ -757,4 +758,54 @@ def test_parse_tcu_report_identifica_datas_embutidas_no_texto() -> None:
 
 def test_competencia_from_date_converte_data_em_mes_ano() -> None:
     assert competencia_from_date("16/04/2026") == "04/2026"
+
+
+def test_parse_projef_competencia_usa_atualizado_ate_em_vez_da_data_de_geracao() -> None:
+    import pactuacalc.parser as parser_module
+
+    original = parser_module.extract_text_from_pdf
+    parser_module.extract_text_from_pdf = lambda _path: (
+        "RESUMO DO CALCULO\n"
+        "Processo: 0600085-20.2024.6.15.0017\n"
+        "I - PARTES\n"
+        "Nome Principal corrigido Juros Moratorios Selic Total (R$)\n"
+        "MULTA ELEITORAL 20.000,00 0,00 4.530,00 24.530,00\n"
+        "II - TOTALIZACAO\n"
+        "Descricao Total (R$)\n"
+        "TOTAL DA CONTA EM 06/2026 29.436,00\n"
+        "ATUALIZADO ATE JUNHO/2026\n"
+        "9 de julho de 2026\n"
+    )
+    try:
+        case = parse_projef_report(Path("relatorio_projef.pdf"))
+    finally:
+        parser_module.extract_text_from_pdf = original
+
+    assert case.data_atualizacao == "09/07/2026"
+    assert case.competencia_atualizacao == "06/2026"
+    assert competencia_esta_defasada(case.competencia_atualizacao) is True
+
+
+def test_condicoes_adicionais_longas_sao_quebradas_na_largura_util_do_pdf(tmp_path) -> None:
+    layout = ProposalPdfLayout(SimplePdf())
+    texto = (
+        "Condicoes adicionais: SERA CONSIDERADO PROCESSO PRINCIPAL O DE N. 06000852020246150017, "
+        "NO QUAL SERAO RECOLHIDAS TODAS AS PARCELAS ATE A QUITACAO INTEGRAL DA DIVIDA, "
+        "NA HIPOTESE DE INADIMPLEMENTO DO ACORDO, SERAO ABATIDAS AS PARCELAS DO VALOR EXECUTADO "
+        "NO PROCESSO 06003176120246150072 E NOS PROCESSOS RELACIONADOS."
+    )
+    largura_util = PAGE_WIDTH - (MARGIN_X * 2)
+    linhas = layout.wrap(texto, largura_util, 10)
+
+    assert len(linhas) >= 3
+    assert all(layout.estimate_width(linha, 10) <= largura_util for linha in linhas)
+
+    case = build_valid_case()
+    case.condicoes_adicionais = texto
+    output = tmp_path / "proposta_condicoes_longas.pdf"
+
+    pdf_path = create_proposal_pdf(case, output)
+
+    assert pdf_path.exists()
+    assert pdf_path.stat().st_size > 0
 

@@ -46,6 +46,8 @@ CPF_CNPJ_RE = re.compile(
     r"\d{3}\.\d{3}\.\d{3}-\d{2}|\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}"
 )
 COMPETENCIA_RE = re.compile(r"\b(0[1-9]|1[0-2])/\d{4}\b")
+PROJEF_ATUALIZADO_ATE_RE = re.compile(r"\bATUALIZADO\s+ATE\s+([A-Z]+|0[1-9]|1[0-2])\s*/\s*(\d{4})\b")
+PROJEF_TOTAL_CONTA_COMPETENCIA_RE = re.compile(r"\bTOTAL\s+DA\s+CONTA\s+EM\s+(0[1-9]|1[0-2])/(\d{4})\b")
 DATE_RE = re.compile(r"\b([0-3]\d/[0-1]\d/\d{4})\b")
 MONEY_RE = re.compile(r"\d{1,3}(?:\.\d{3})*,\d{2}")
 IDENTIFICADOR_FOOTER_RE = re.compile(
@@ -291,6 +293,24 @@ def extract_report_date(text: str) -> str:
     return datetime(year, month, day).strftime("%d/%m/%Y")
 
 
+def competencia_from_projef_text(text: str) -> str:
+    normalized_text = normalize_anchor_text(text)
+    updated_match = PROJEF_ATUALIZADO_ATE_RE.search(normalized_text)
+    if updated_match:
+        month_token = updated_match.group(1)
+        year = updated_match.group(2)
+        if month_token.isdigit():
+            return f"{int(month_token):02d}/{year}"
+        month = PT_BR_MONTHS.get(month_token)
+        if month:
+            return f"{month:02d}/{year}"
+
+    total_match = PROJEF_TOTAL_CONTA_COMPETENCIA_RE.search(normalized_text)
+    if total_match:
+        return f"{int(total_match.group(1)):02d}/{total_match.group(2)}"
+    return ""
+
+
 def competencia_from_date(value: str) -> str:
     parsed = parse_iso_date(value)
     if not parsed:
@@ -506,7 +526,7 @@ def parse_projef_report(path: str | Path) -> CaseData:
         devedor = clean_projef_devedor(devedor)
 
     report_date = extract_report_date(parsed.raw_text)
-    competencia_atualizacao = competencia_from_date(report_date)
+    competencia_atualizacao = competencia_from_projef_text(parsed.raw_text) or competencia_from_date(report_date)
     multa_percentual, multa_total, subtotal_totalizacao = parse_totalizacao_values(totalizacao)
     processo_origem = processo_match.group(0) if processo_match else ""
     subdebitos = parse_partes_section(partes, processo_origem)
