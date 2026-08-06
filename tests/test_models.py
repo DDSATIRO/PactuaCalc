@@ -165,6 +165,36 @@ def test_consolida_itens_com_mesma_chave_arrecadatoria() -> None:
     assert consolidated[0].valor_bloqueado == 7.0
 
 
+def test_descricao_consolidada_nao_altera_subdebitos_originais() -> None:
+    items = [
+        Subdebito(
+            tipo="PRINCIPAL",
+            descricao="Descricao A",
+            referencia_origem="1",
+            valor_atualizado=100.0,
+            ug="123456",
+            gestao="00001",
+            gru_cr="12345-6",
+        ),
+        Subdebito(
+            tipo="PRINCIPAL",
+            descricao="Descricao B",
+            referencia_origem="2",
+            valor_atualizado=50.0,
+            ug="123456",
+            gestao="00001",
+            gru_cr="12345-6",
+        ),
+    ]
+
+    consolidated = consolidar_por_chave_arrecadatoria(
+        items,
+        {"123456/00001|12345-6": "Descricao consolidada"},
+    )
+
+    assert consolidated[0].descricao == "Descricao consolidada"
+    assert [item.descricao for item in items] == ["Descricao A", "Descricao B"]
+
 def test_split_sections_tolera_acentuacao_nas_ancoras() -> None:
     parsed = split_sections("RESUMO DO CÁLCULO\nabc\nI - PARTES\nxyz")
     assert "RESUMO DO CALCULO" in parsed.sections

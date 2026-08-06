@@ -40,12 +40,13 @@ python app.py
 
 ## Controle Remoto de Versão
 
-O sistema verifica automaticamente ao abrir se a versão instalada ainda é permitida, consultando o `version.json` hospedado no GitHub. Três camadas de controle independentes:
+O sistema verifica automaticamente ao abrir se a versão instalada ainda é permitida, consultando o `version.json` hospedado no GitHub. Quatro camadas de controle independentes:
 
 | Campo | Efeito |
 |-------|--------|
 | `min_version` | Bloqueia versões abaixo do piso mínimo (muito antigas) |
 | `blocked_versions` | Bloqueia versões específicas com bugs, sem afetar as demais |
+| `allowed_versions` | Quando informado, permite apenas as versões listadas |
 | `latest_version` | Avisa gentilmente que há uma versão mais recente (sem bloquear) |
 
 Sem internet, o app abre normalmente (degradação graciosa).

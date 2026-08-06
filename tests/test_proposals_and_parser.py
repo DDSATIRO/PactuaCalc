@@ -602,6 +602,35 @@ def test_create_proposal_pdf_gera_arquivo() -> None:
     assert pdf_path.stat().st_size > 0
 
 
+def test_create_proposal_pdf_inclui_quadro_de_subdebitos_sem_coluna_tipo() -> None:
+    case = build_valid_case()
+    case.subdebitos.append(
+        Subdebito(
+            tipo="HONORÁRIOS",
+            descricao="Honorarios advocaticios",
+            referencia_origem="2",
+            valor_atualizado=200.0,
+            multa_art_523=20.0,
+            valor_bloqueado=10.0,
+            ug="110060",
+            gestao="00001",
+            gru_cr="91710-9",
+        )
+    )
+    output_dir = Path("C:/Projetos/pactuacalc")
+
+    pdf_path = create_proposal_pdf(case, output_dir / "teste_proposta_subdebitos.pdf")
+    data = pdf_path.read_bytes()
+    title = "DÉBITO\\(S\\) INCLUÍDO\\(S\\) NESTA PROPOSTA".encode("cp1252")
+    section = data.split(title, 1)[1].split("OPTE POR UMA".encode("cp1252"), 1)[0]
+
+    assert title in data
+    assert "DESCRIÇÃO".encode("cp1252") in section
+    assert "Honorarios advocaticios".encode("cp1252") in section
+    assert b"TIPO" not in section
+    assert "DÍVIDA CONSOLIDADA POR CÓDIGO DE ARRECADAÇÃO".encode("cp1252") not in data
+
+
 def test_create_proposal_pdf_informa_bloqueio_no_parcela_pgu() -> None:
     case = build_valid_case()
     case.subdebitos[0].valor_bloqueado = 100.0

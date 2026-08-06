@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from pactuacalc.models import CaseData, Subdebito
 
@@ -38,13 +38,21 @@ def total_bloqueado_efetivo(subdebitos: list[Subdebito]) -> float:
     return round(sum(item.valor_bloqueado for item in subdebitos), 2)
 
 
-def consolidar_por_chave_arrecadatoria(subdebitos: list[Subdebito]) -> list[Subdebito]:
+def consolidated_description_key(ug_gestao: str, gru_cr: str) -> str:
+    return f"{ug_gestao or '-'}|{gru_cr or '-'}"
+
+
+def consolidar_por_chave_arrecadatoria(
+    subdebitos: list[Subdebito],
+    descricoes_consolidadas: dict[str, str] | None = None,
+) -> list[Subdebito]:
     grouped: dict[tuple[str, str], Subdebito] = {}
     passthrough: list[Subdebito] = []
+    descricoes_consolidadas = descricoes_consolidadas or {}
 
     for item in subdebitos:
         if not item.ug_gestao or not item.gru_cr:
-            passthrough.append(item)
+            passthrough.append(replace(item))
             continue
         key = (item.ug_gestao, item.gru_cr)
         if key not in grouped:
@@ -72,7 +80,13 @@ def consolidar_por_chave_arrecadatoria(subdebitos: list[Subdebito]) -> list[Subd
             grouped_item.valor_bloqueado + item.valor_bloqueado, 2
         )
 
-    return passthrough + list(grouped.values())
+    consolidated = passthrough + list(grouped.values())
+    for item in consolidated:
+        key = consolidated_description_key(item.ug_gestao or "-", item.gru_cr or "-")
+        override = descricoes_consolidadas.get(key, "").strip()
+        if override:
+            item.descricao = override
+    return consolidated
 
 
 @dataclass

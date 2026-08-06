@@ -23,6 +23,7 @@ from pactuacalc.proposals import (
 )
 from pactuacalc.services import (
     MergeConflict,
+    consolidated_description_key,
     consolidar_por_chave_arrecadatoria,
     distribuir_valor_bloqueado,
     merge_case_data,
@@ -204,6 +205,7 @@ class MainWindow:
         except Exception:
             pass
         self.case_data = CaseData()
+        self._saved_case_signature = ""
         self.selected_subdebito_indices: list[int] = []
 
         self.case_vars: dict[str, tk.StringVar] = {
@@ -234,6 +236,8 @@ class MainWindow:
         self._configure_styles()
         self._build_layout()
         self.refresh_all()
+        self._mark_case_clean()
+        self.root.protocol("WM_DELETE_WINDOW", self.close_app)
 
     def _apply_case_defaults(self) -> None:
         if self.case_data.data_atualizacao and not self.case_data.competencia_atualizacao:
@@ -568,7 +572,7 @@ class MainWindow:
         self._attach_tooltip(save_json_btn, BUTTON_TOOLTIPS["save_json"])
         ttk.Button(buttons, text="Sobre", command=self.show_about).grid(row=0, column=4, padx=(0, 8), sticky="e")
         ttk.Button(buttons, text="Ajuda", command=self.show_help).grid(row=0, column=5, padx=(0, 8), sticky="e")
-        ttk.Button(buttons, text="Sair", command=self.root.destroy).grid(row=0, column=6, sticky="e")
+        ttk.Button(buttons, text="Sair", command=self.close_app).grid(row=0, column=6, sticky="e")
         ttk.Label(buttons, textvariable=self.status_var, style="Status.TLabel").grid(
             row=1, column=0, columnspan=7, sticky="e", pady=(4, 0)
         )
@@ -989,7 +993,46 @@ class MainWindow:
         ).grid(row=len(editable_fields) + 2, column=0, columnspan=2, sticky="sew", padx=4, pady=(4, 0))
 
 
+    def _case_signature(self) -> str:
+        return json.dumps(self.case_data.to_dict(), ensure_ascii=False, sort_keys=True)
+
+    def _current_case_signature(self) -> str:
+        self.sync_case_from_form()
+        return self._case_signature()
+
+    def _mark_case_clean(self) -> None:
+        self._saved_case_signature = self._case_signature()
+
+    def _has_unsaved_changes(self) -> bool:
+        try:
+            return self._current_case_signature() != self._saved_case_signature
+        except ValueError:
+            return True
+
+    def _confirm_save_unsaved_changes(self, action: str) -> bool:
+        if not self._has_unsaved_changes():
+            return True
+        answer = messagebox.askyesnocancel(
+            "Salvar alterações?",
+            (
+                "Há alterações não salvas no caso atual.\n\n"
+                f"Deseja salvar antes de {action}?"
+            ),
+            parent=self.root,
+        )
+        if answer is None:
+            return False
+        if answer is False:
+            return True
+        return self.save_json(show_success=False)
+
+    def close_app(self) -> None:
+        if self._confirm_save_unsaved_changes("fechar o aplicativo"):
+            self.root.destroy()
+
     def create_from_any_pdf(self) -> None:
+        if not self._confirm_save_unsaved_changes("criar um novo caso a partir de relatório"):
+            return
         paths = filedialog.askopenfilenames(
             title="Selecione um ou mais relatorios TCU/PROJEF Web",
             filetypes=[("Arquivos PDF", "*.pdf")],
@@ -1193,6 +1236,8 @@ class MainWindow:
             messagebox.showerror("Erro ao ler PDF", str(exc))
 
     def load_json(self) -> None:
+        if not self._confirm_save_unsaved_changes("abrir outro JSON"):
+            return
         path = filedialog.askopenfilename(
             title="Abrir rascunho anterior",
             filetypes=[("Arquivos JSON", "*.json")],
@@ -1203,6 +1248,7 @@ class MainWindow:
             self.case_data = CaseData.load_json(path)
             self.clear_case_selection_state()
             self.refresh_all()
+            self._mark_case_clean()
             self.status_var.set(f"JSON carregado: {Path(path).name}")
         except Exception as exc:
             messagebox.showerror("Erro ao abrir JSON", str(exc))
@@ -1216,12 +1262,16 @@ class MainWindow:
             parts.append(datetime.now().strftime("%d-%m-%Y_%H-%M-%S"))
         return "-".join(parts) + extension
 
-    def save_json(self) -> None:
-        self.sync_case_from_form()
+    def save_json(self, show_success: bool = True) -> bool:
+        try:
+            self.sync_case_from_form()
+        except ValueError:
+            messagebox.showerror("Dados invalidos", "Revise os campos numericos antes de salvar.")
+            return False
         errors = self.case_data.validate(strict_proposal=bool(self.case_data.subdebitos))
         if errors:
             messagebox.showwarning("Validacoes pendentes", "\n".join(errors))
-            return
+            return False
         path = filedialog.asksaveasfilename(
             initialfile=self._default_case_filename(".json", include_timestamp=False),
             title="Salvar dados do caso",
@@ -1229,10 +1279,13 @@ class MainWindow:
             filetypes=[("Arquivos JSON", "*.json")],
         )
         if not path:
-            return
+            return False
         self.case_data.save_json(path)
+        self._mark_case_clean()
         self.status_var.set(f"Dados salvos em {Path(path).name}")
-        messagebox.showinfo("Salvo", "Caso salvo com sucesso.")
+        if show_success:
+            messagebox.showinfo("Salvo", "Caso salvo com sucesso.")
+        return True
 
     def generate_proposal(self) -> None:
         self.sync_case_from_form()
@@ -2093,11 +2146,10 @@ class MainWindow:
             return
 
         ug_gestao, gru_cr = self.selected_summary_key
-        for item in self.case_data.subdebitos:
-            if (item.ug_gestao or "-") == ug_gestao and (item.gru_cr or "-") == gru_cr:
-                item.descricao = descricao
-                item.normalize_honorarios()
-        self.refresh_subdebitos()
+        key = consolidated_description_key(ug_gestao, gru_cr)
+        self.case_data.descricoes_consolidadas[key] = descricao
+        self.refresh_summary()
+        self.status_var.set("Descricao consolidada atualizada sem alterar os subdebitos relacionados.")
 
     def apply_batch_codes(self) -> None:
         if not self.selected_subdebito_indices:
@@ -2208,7 +2260,10 @@ class MainWindow:
         self.summary_description_var.set("")
 
     def refresh_summary(self) -> None:
-        consolidated = consolidar_por_chave_arrecadatoria(self.case_data.subdebitos)
+        consolidated = consolidar_por_chave_arrecadatoria(
+            self.case_data.subdebitos,
+            self.case_data.descricoes_consolidadas,
+        )
         for item in self.summary_tree.get_children():
             self.summary_tree.delete(item)
         for index, item in enumerate(consolidated):

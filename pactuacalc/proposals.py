@@ -397,7 +397,7 @@ def build_proposal_scenarios(
     selected_codes: set[str] | None = None,
     proposal_selections: dict[str, ProposalSelection] | None = None,
 ) -> list[ProposalScenario]:
-    consolidated = consolidar_por_chave_arrecadatoria(case_data.subdebitos)
+    consolidated = consolidar_por_chave_arrecadatoria(case_data.subdebitos, case_data.descricoes_consolidadas)
     total_divida = round(sum(item.valor_total for item in consolidated), 2)
     total_bloqueado = total_bloqueado_efetivo(consolidated)
     base_vista = _base_para_faixa_vista(consolidated)
@@ -572,9 +572,52 @@ def _render_header(layout: ProposalPdfLayout, case_data: CaseData, consolidated:
     layout.highlighted_total("VALOR TOTAL GERAL DEVIDO", format_currency_br(total_geral))
 
 
-def _render_consolidated_table(layout: ProposalPdfLayout, consolidated: list[Subdebito]) -> None:
+# OBSERVACAO: quadro consolidado desativado. Pode ser reativado no futuro descomentando este bloco e a chamada em create_proposal_pdf.
+# def _render_consolidated_table(layout: ProposalPdfLayout, consolidated: list[Subdebito]) -> None:
+#     layout.block_title(
+#         "DÍVIDA CONSOLIDADA POR CÓDIGO DE ARRECADAÇÃO",
+#         fill=COLOR_SECTION_FILL,
+#         text_color=COLOR_NAVY,
+#         stroke=(0.62, 0.66, 0.72),
+#     )
+#     rows = [
+#         [
+#             item.descricao,
+#             item.ug_gestao or "-",
+#             item.gru_cr or "-",
+#             format_currency_br(item.valor_atualizado),
+#             format_currency_br(item.multa_art_523),
+#             format_currency_br(item.valor_total),
+#             format_currency_br(item.valor_bloqueado),
+#         ]
+#         for item in consolidated
+#     ]
+#     rows.append(
+#         [
+#             "TOTAL GERAL",
+#             "",
+#             "",
+#             "",
+#             "",
+#             format_currency_br(round(sum(item.valor_total for item in consolidated), 2)),
+#             format_currency_br(round(sum(item.valor_bloqueado for item in consolidated), 2)),
+#         ]
+#     )
+#     layout.table(
+#         headers=["TIPO DE DÉBITO", "UG/GESTÃO", "CR", "ATUALIZADO", "MULTA 523", "VALOR TOTAL", "BLOQ/DEP"],
+#         rows=rows,
+#         widths=[235, 110, 70, 105, 90, 105, 79],
+#         header_fill=COLOR_TABLE_HEADER,
+#         row_fill=(0.99, 0.99, 0.99),
+#         alternate_row_fill=COLOR_TABLE_ALT,
+#         total_fill=COLOR_TABLE_TOTAL,
+#         total_row_indices={len(rows) - 1},
+#     )
+# 
+# 
+def _render_included_debts_table(layout: ProposalPdfLayout, subdebitos: list[Subdebito]) -> None:
     layout.block_title(
-        "DÍVIDA CONSOLIDADA POR CÓDIGO DE ARRECADAÇÃO",
+        "DÉBITO(S) INCLUÍDO(S) NESTA PROPOSTA",
         fill=COLOR_SECTION_FILL,
         text_color=COLOR_NAVY,
         stroke=(0.62, 0.66, 0.72),
@@ -586,38 +629,38 @@ def _render_consolidated_table(layout: ProposalPdfLayout, consolidated: list[Sub
             item.gru_cr or "-",
             format_currency_br(item.valor_atualizado),
             format_currency_br(item.multa_art_523),
-            format_currency_br(item.valor_total),
             format_currency_br(item.valor_bloqueado),
         ]
-        for item in consolidated
+        for item in subdebitos
     ]
     rows.append(
         [
-            "TOTAL GERAL",
+            "TOTAL DOS SUBDÉBITOS",
             "",
             "",
-            "",
-            "",
-            format_currency_br(round(sum(item.valor_total for item in consolidated), 2)),
-            format_currency_br(round(sum(item.valor_bloqueado for item in consolidated), 2)),
+            format_currency_br(round(sum(item.valor_atualizado for item in subdebitos), 2)),
+            format_currency_br(round(sum(item.multa_art_523 for item in subdebitos), 2)),
+            format_currency_br(round(sum(item.valor_bloqueado for item in subdebitos), 2)),
         ]
     )
     layout.table(
-        headers=["TIPO DE DÉBITO", "UG/GESTÃO", "CR", "ATUALIZADO", "MULTA 523", "VALOR TOTAL", "BLOQ/DEP"],
+        headers=["DESCRIÇÃO", "UG/GESTÃO", "GRU(CR)", "VALOR ATUALIZADO", "MULTA 523", "VALOR BLOQUEADO"],
         rows=rows,
-        widths=[235, 110, 70, 105, 90, 105, 79],
+        widths=[290, 110, 75, 120, 95, 104],
         header_fill=COLOR_TABLE_HEADER,
         row_fill=(0.99, 0.99, 0.99),
         alternate_row_fill=COLOR_TABLE_ALT,
         total_fill=COLOR_TABLE_TOTAL,
         total_row_indices={len(rows) - 1},
+        font_size=7.6,
+        row_padding=4,
     )
 
 
 def _render_deadline_callout(layout: ProposalPdfLayout, case_data: CaseData) -> None:
     data_limite = case_data.data_limite_resposta or "-"
     layout.callout(
-        title="OPTE POR UMA DAS OPÇÕES DE PARCELAMENTO OFERTADAS ABAIXO.",
+        title="OPTE POR UMA DAS OPÇÕES DE PARCELAMENTO OFERTADAS ABAIXO OU NAS PÁGINAS SEGUINTES (se houver).",
         body="",
         fill=COLOR_ALERT_FILL,
         stroke=(0.72, 0.64, 0.52),
@@ -902,7 +945,7 @@ def create_proposal_pdf(
     selected_codes: set[str] | None = None,
     scenarios: list[ProposalScenario] | None = None,
 ) -> Path:
-    consolidated = consolidar_por_chave_arrecadatoria(case_data.subdebitos)
+    consolidated = consolidar_por_chave_arrecadatoria(case_data.subdebitos, case_data.descricoes_consolidadas)
     scenarios = scenarios or build_proposal_scenarios(
         case_data,
         selected_codes=selected_codes,
@@ -913,7 +956,9 @@ def create_proposal_pdf(
     pdf = SimplePdf()
     layout = ProposalPdfLayout(pdf)
     _render_header(layout, case_data, consolidated)
-    _render_consolidated_table(layout, consolidated)
+    # Quadro consolidado desativado. Pode ser reativado no futuro junto com a funcao comentada acima.
+    # _render_consolidated_table(layout, consolidated)
+    _render_included_debts_table(layout, case_data.subdebitos)
     _render_deadline_callout(layout, case_data)
     for scenario in scenarios:
         _render_scenario(layout, case_data, scenario, total_divida)

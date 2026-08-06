@@ -172,6 +172,7 @@ class CaseData:
     incluir_juros_tcu: bool = False
     lancamentos_tcu: list[TcuLancamento] = field(default_factory=list)
     relatorios_anexados: list[str] = field(default_factory=list)
+    descricoes_consolidadas: dict[str, str] = field(default_factory=dict)
     proposal_rules: ProposalRules = field(default_factory=ProposalRules)
     propostas_selecionadas: dict[str, ProposalSelection] = field(default_factory=dict)
     subdebitos: list[Subdebito] = field(default_factory=list)
@@ -217,6 +218,7 @@ class CaseData:
             incluir_juros_tcu=bool(data.get("incluir_juros_tcu", False)),
             lancamentos_tcu=lancamentos_tcu,
             relatorios_anexados=list(data.get("relatorios_anexados", [])),
+            descricoes_consolidadas=dict(data.get("descricoes_consolidadas", {}) or {}),
             proposal_rules=ProposalRules(**rules_data),
             propostas_selecionadas=propostas_selecionadas,
             subdebitos=subdebitos,
