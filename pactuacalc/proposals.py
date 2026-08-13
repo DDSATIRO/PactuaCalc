@@ -57,6 +57,7 @@ class ProposalScenario:
     nota_calculo_selic: str = ""
     rows: list[ProposalRow] | None = None
     adaptada: bool = False
+    desconto_adaptado: bool = False
 
 
 MODALIDADES = [
@@ -333,6 +334,7 @@ def _apply_selection_to_scenario(
     total_bloqueado: float,
     desconto_base: float,
     case_data: CaseData,
+    base_vista: float | None = None,
 ) -> ProposalScenario:
     parcelas = selection.parcelas if selection.parcelas is not None else scenario.parcelas
     desconto_percentual = (
@@ -367,6 +369,8 @@ def _apply_selection_to_scenario(
         entrada_gru,
         valor_parcela_base_pura,
     )
+    observacao = scenario.observacao
+    desconto_foi_alterado = abs(desconto_percentual - scenario.desconto_percentual) > 0.0001
     rows = _build_scenario_rows(
         consolidated,
         desconto_valor,
@@ -385,10 +389,11 @@ def _apply_selection_to_scenario(
         saldo_remanescente=saldo,
         valor_parcela=valor_parcela,
         valor_final=round(total_bloqueado + entrada_gru + saldo, 2),
-        observacao=scenario.observacao,
+        observacao=observacao,
         nota_calculo_selic=nota_calculo_selic or scenario.nota_calculo_selic,
         rows=rows,
         adaptada=adaptada,
+        desconto_adaptado=desconto_foi_alterado,
     )
 
 
@@ -418,19 +423,11 @@ def build_proposal_scenarios(
             if case_data.proposal_rules.calculo_vista == "progressivo":
                 desconto_percentual = _taxa_vista_progressiva(base_vista, faixas)
                 desconto_valor = round(desconto_base * (desconto_percentual / 100.0), 2)
-                observacao = (
-                    f"Cálculo progressivo excepcional: percentual efetivo de "
-                    f"{format_percent_br(desconto_percentual)} definido sobre base de faixa "
-                    f"{format_currency_br(base_vista)} e aplicado sobre base geral de "
-                    f"{format_currency_br(desconto_base)}."
-                )
+                observacao = ""
             else:
                 desconto_percentual = taxa_vista_unica
                 desconto_valor = round(desconto_base * (desconto_percentual / 100.0), 2)
-                observacao = (
-                    f"Percentual único da faixa: {format_percent_br(desconto_percentual)} "
-                    f"(base de cálculo {format_currency_br(base_vista)})."
-                )
+                observacao = ""
         else:
             desconto_percentual = round(modalidade["desconto"] * 100, 2)
             desconto_valor = round(desconto_base * modalidade["desconto"], 2)
@@ -529,6 +526,7 @@ def build_proposal_scenarios(
                     total_bloqueado,
                     desconto_base,
                     case_data,
+                    base_vista,
                 )
         scenarios.append(scenario)
     return scenarios
@@ -675,9 +673,14 @@ def _scenario_subtitle(case_data: CaseData, scenario: ProposalScenario, total_di
     if scenario.parcelas > 1 and scenario.parcelas != default_parcelas:
         ajuste_parcelas = f" Parcelas: {scenario.parcelas}."
     if scenario.codigo == "2":
+        tipo_desconto = (
+            "percentual de desconto progressivo (final)"
+            if case_data.proposal_rules.calculo_vista == "progressivo"
+            else "percentual de desconto único"
+        )
         return (
             f"Pagamento em parcela única. Desconto de {format_percent_br(scenario.desconto_percentual)} "
-            f"(base de cálculo {format_currency_br(total_divida)})."
+            f"(base de cálculo {format_currency_br(total_divida)}; {tipo_desconto})."
         )
     if scenario.entrada_minima_percentual > 0:
         return (
@@ -701,6 +704,8 @@ def _scenario_title_modalidade(scenario: ProposalScenario) -> str:
 
 def _scenario_title(case_data: CaseData, scenario: ProposalScenario) -> str:
     title = f"OPÇÃO {scenario.codigo}: {_scenario_title_modalidade(scenario)}"
+    if scenario.desconto_adaptado and scenario.desconto_percentual > 0:
+        title += f" - DESCONTO {format_percent_br(scenario.desconto_percentual)}"
     if scenario.parcelas == 1:
         title += " (PARCELA ÚNICA)"
     else:

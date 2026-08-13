@@ -22,7 +22,7 @@ from pactuacalc.parser import (
 from pactuacalc.projefweb import competencia_esta_defasada
 import pactuacalc.proposals as proposals
 from pactuacalc.proposal_render import PAGE_WIDTH, MARGIN_X, ProposalPdfLayout, SimplePdf
-from pactuacalc.proposals import _scenario_title_modalidade, build_proposal_scenarios, create_proposal_pdf
+from pactuacalc.proposals import _scenario_subtitle, _scenario_title, _scenario_title_modalidade, build_proposal_scenarios, create_proposal_pdf
 from pactuacalc.services import merge_case_data, replace_tcu_case_data
 
 
@@ -159,6 +159,51 @@ def test_build_proposal_scenarios_aplica_proposta_salva() -> None:
     assert cenario.saldo_remanescente == 605.0
     assert cenario.valor_parcela == 60.5
     assert cenario.adaptada is True
+    assert cenario.desconto_adaptado is True
+
+def test_titulo_da_proposta_inclui_desconto_efetivo_ajustado() -> None:
+    case = build_valid_case()
+    selecoes = {"4.A": ProposalSelection(entrada_percentual=20.0, desconto_percentual=10.0, parcelas=12)}
+
+    cenario = build_proposal_scenarios(case, selected_codes={"4.A"}, proposal_selections=selecoes)[0]
+
+    assert "DESCONTO 10,00%" in _scenario_title(case, cenario)
+    assert "DESCONTO 25,00%" not in _scenario_title(case, cenario)
+
+
+def test_titulo_da_proposta_mantem_padrao_quando_desconto_nao_muda() -> None:
+    case = build_valid_case()
+
+    cenario = build_proposal_scenarios(case, selected_codes={"4.A"})[0]
+
+    assert cenario.desconto_adaptado is False
+    assert "DESCONTO 25,00%" not in _scenario_title(case, cenario)
+
+
+def test_subtitulo_vista_informa_percentual_unico_sem_observacao_extra() -> None:
+    case = build_valid_case()
+    selecoes = {"2": ProposalSelection(desconto_percentual=10.0)}
+
+    cenario = build_proposal_scenarios(case, selected_codes={"2"}, proposal_selections=selecoes)[0]
+    subtitulo = _scenario_subtitle(case, cenario, 1100.0)
+
+    assert cenario.desconto_percentual == 10.0
+    assert cenario.observacao == ""
+    assert "base de cálculo R$ 1.100,00; percentual de desconto único" in subtitulo
+    assert "Percentual único atribuído" not in subtitulo
+    assert "DESCONTO 10,00%" in _scenario_title(case, cenario)
+
+
+def test_subtitulo_vista_progressiva_informa_percentual_final_sem_observacao_extra() -> None:
+    case = build_valid_case()
+    case.proposal_rules.calculo_vista = "progressivo"
+
+    cenario = build_proposal_scenarios(case, selected_codes={"2"})[0]
+    subtitulo = _scenario_subtitle(case, cenario, 1100.0)
+
+    assert cenario.observacao == ""
+    assert "base de cálculo R$ 1.100,00; percentual de desconto progressivo (final)" in subtitulo
+    assert "Cálculo progressivo excepcional" not in cenario.observacao
 
 
 def test_entrada_opcional_em_proposta_sem_desconto_nao_cria_desconto() -> None:
